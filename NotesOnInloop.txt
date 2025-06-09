@@ -1,0 +1,96 @@
+Usage of queues in inLoop/outLoop and function arg passing - double check
+
+inLoop is invoked from the .CMD file as
+
+	seq &inLoop,"bdno=0, PVAcqEna=DAQB1_1_CS_Ena,PVMLE=VME01:MDIG1:master_logic_enable, PVRun=VME01:MDIG1:CV_Running"
+
+but the definition in the top-level source is
+
+	program inLoop("PVRun=VME01:DIG1:CV_Running, PVRun=VME01:DIG1:CV_Running" )
+
+inLoop uses the following PV hooks:
+
+	DECLMON(short ,AcqRun,Online_CS_StartStop)
+	DECLMON(short ,AcqEna,{PVAcqEna})
+	DECL(short ,MLE, {PVMLE})
+	DECL(short ,Running, {PVRun})
+
+inLoop does the following PV interactions:
+
+	State INIT looks at AcqRun.
+	State DRAIN_REMAINING_DATA looks at AcqRun.
+
+	No state looks at AcqEna.
+
+    State DRAIN_REMAINING_DATA sets MLE=0 and does a pvPut(MLE) when it transitions back to IDLE.
+
+	State INIT, upon entry, sets Running=0 and does a pvPut(Running).
+	State INIT, when AcqRun is set, sets Running=1 and does a pvPut(Running) as it transitions to state INITIAL_FIFO_CLEAR
+	State DRAIN_REMANING_DATA, as the last thing in the entry condition, sets Running=0 and does a pvPut(Running).
+
+INLOOP QUEUE USAGE
+
+	in state SCAN_FOR_DATA, transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], TypeOfBoard, globQueueUsageFlag); is called.
+	This call occurs WITHIN a do loop that repeatedly executes if the return status from transferDigFifoData() says no buffer was obtained.
+		- might be a risk of error in doing it that way.
+
+	Identical usage in state DRAIN_REMAINING_DATA : TransferFifoStatus = transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], TypeOfBoard, globQueueUsageFlag);
+
+	In state SCAN_FOR_DATA, TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);     //send error header
+    is called if the digitizer FIFO full flag is set.
+
+	In state SCAN_FOR_DATA, TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);     //send error header
+	is called if the digitizer EMPTY flags are set, but the FIFO depth count is not zero.
+
+	in state SCAN_FOR_DATA, TransferFifoStatus = DigitizerTypeFHeader(0, BoardNumber, TypeOfBoard,globQueueUsageFlag);		//send informational message that digitizer was empty
+	is called if the digitizer is empty but the FIFO depth count is zero.
+
+	in DRAIN_REMAINING_DATA, TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);     //send error header
+	is called if the digitizer FIFO full flags are set.
+
+	in DRAIN_REMAINING_DATA, TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);     //send error header
+	is called if the digitizer EMPTY flags are set but the depth count is nonzero.
+
+	in DRAIN_REMAINING_DATA, TransferFifoStatus = DigitizerTypeFHeader(0, BoardNumber, TypeOfBoard,globQueueUsageFlag);		//send informational message that digitizer was empty
+	is called if the digitizer EMPTY flags are set and the depth is zero.
+
+	In DRAIN_REMAINING DATA, TransferFifoStatus = DigitizerTypeFHeader(1, BoardNumber, TypeOfBoard,globQueueUsageFlag);		//send 'end of run' header.
+	is called when a digitizer has been drained to EMPTY.  Normal operation would send a type 0 "empty" immediately followed by the type 1 "end of run"
+
+COMPARING CALLS TO TARGETS
+
+	transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], TypeOfBoard, globQueueUsageFlag);
+	transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], TypeOfBoard, globQueueUsageFlag);
+--argument order consistent within inLoop.
+-- subroutine definition is
+	int transferDigFifoData(int bdnum, int numwords,  char *TypeOfBoard, int QueueUsageFlag)
+
+
+TypeOfBoard = (char *) (&(BoardTypeNames[daqBoards[BoardNumber].board_type][0])); is inside the for loop of SCAN_FOR_DATA
+TypeOfBoard = (char *) (&(BoardTypeNames[daqBoards[BoardNumber].board_type][0])); is inside the for loop of DRAIN_REMAINING_DATA
+
+//rawBuf->board_type = TypeOfBoard; is the assignment in transferDigFifoData().     I see Michael has commented this out in readDigFifo.
+
+putWrittenBuf(rawEvt *rawBuf), called by transferDigFifoData(), doesn't use the ->board_type.
+getWrittenBuf(rawEvt *rawBuf) doesn't do anything with the ->board_type.
+CheckAndPurge doesn't do anything with the ->board_type.
+
+
+
+
+
+	DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(0, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(2, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(0, BoardNumber, TypeOfBoard,globQueueUsageFlag);
+	DigitizerTypeFHeader(1, BoardNumber, TypeOfBoard,globQueueUsageFlag);	
+--argument order consistent within inLoop.
+
+
+
+	
+
+
+

@@ -1,0 +1,46 @@
+## format of the device entries is device(recType,addrType,dset,"name")
+##	The "name" here is somehow magically matched to the DSET name in .db files defining PVs.
+##	The dset field is the name of a data structure in devGData.c. 
+##		The data structure contains pointers to functions within devGData.c.
+##	addrType is one of the predefined set AB_IO, BITBUS_IO, BBGPIB_IO, CAMAC_IO, GPIB_IO, INST_IO, RF_IO, VME_IO, VXI_IO.
+##		These are magic defines built into EPICS.  Each type implies a different data structure.
+
+## For every "epicsExportRegistrar" function hook in the source, there should be a matching
+## registrar line here in the dbd.
+
+### this group from devGVME.c
+
+registrar(devGVMERegistrar)
+registrar(VMEIOWRegistrar)
+registrar(VMEIORRegistrar)
+registrar(VerifyFlashRegistrar)
+registrar(EraseFlashRegistrar)
+registrar(ProgramFlashRegistrar)
+registrar(ConfigureFlashRegistrar)
+
+##	drvAsynDebug.c:epicsExportRegistrar(asynDebugRegister);
+registrar(asynDebugRegister)
+
+##	drvAsynDigitizer.c:epicsExportRegistrar(asynDigitizerRegister);
+registrar(asynDigitizerRegister)
+
+##	drvAsynTrigMaster.c:epicsExportRegistrar(asynTrigMasterRegister);
+registrar(asynTrigMasterRegister)
+
+##	drvAsynTrigRouter.c:epicsExportRegistrar(asynTrigRouterRegister);
+registrar(asynTrigRouterRegister)
+
+##	equalSub.c:epicsExportRegistrar(equalSubRegistrar);
+####  registrar(equalSubRegistrar)			<=== JTA 20250421 REMOVED
+
+##	restoreSub.c:epicsExportRegistrar(devGDigRestoreRegistrar);
+###  registrar(devGDigRestoreRegistrar)        <=== MBO 20220729 REMOVED
+
+## Every state machine also requires a registrar
+registrar(inLoopRegistrar)
+registrar(outLoopRegistrar)
+registrar(MiniSenderRegistrar)
+
+
+
+

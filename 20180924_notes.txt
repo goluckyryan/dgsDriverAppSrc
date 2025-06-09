@@ -1,0 +1,52 @@
+Understanding the hierarchy of calls for the digitizer
+
+1) The state machine for reading out digitizers is inLoop.st.
+	a) inLoop.st calls dataReady = checkDigFIFO(boardNo, buildEnable);  to check the digitizer FIFO for data.
+		1) checkDigFIFO() is newly defined, in readDigFIFO.c.
+		2) function returns -1 on error, 0 on FIFO empty, # of words available if data available.
+	b) If inLoop thinks there is data available, serviceOneBufferDig(boardNo,dataReady); is called to read and process the data.
+		1) serviceOneBuffer calls checkDigFIFO() again and bases the way it reads out on the amount of data available.
+		
+Guess we should at this point fully understand the readout concepts of the buffering system.
+
+WHAT WE KNOW SO FAR
+
+A) setupFIFOReader() generates two queues named gDigRawQ and gDigRawRetQ.
+B) the size of the queues is RAW_Q_SIZE buffers, each buffer sizeof(rawEvt *).
+C) RAW_Q_SIZE is defined in readFIFO.h as
+	#define RAW_BUF_SIZE	(512 * 1024)	/* bytes */	
+	#define MAX_RAW_XFER_SIZE	(512 * 1024)	/* bytes */
+	#define RAW_Q_SIZE	 400
+D) a rawEvt is defined as static rawEvt *rawBufArray[RAW_Q_SIZE];
+	a) If you dig into dgsDrivers/include/eventSource.h, you find that a rawEvt is a data structure
+
+	typedef struct {
+		#ifdef GARBAGE_COLLECT
+			long long lastTime;
+			int lastTimeValid;
+		#endif
+			unsigned int board;
+			unsigned int len;      /* we are now supporting variable length raw data */
+			volatile int refcount;
+			epicsMutexId refMutex;
+			unsigned int *curptr;
+			unsigned int *bptr;
+			/*madded added this- tells who owns this buffer- for debugging
+			 * 0=undef, 1=retQ,2=rawQ, 3=getRawBuf, 4=servuceBuff,5 getFreshBufferDGS
+			 */
+			unsigned int owner; 
+		#ifdef GARBAGE_COLLECT
+			struct eNode **nodeArrays[10];
+		#endif
+	} rawEvt;
+	
+E) So the queues are actually arrays of these rawEvt structs, that themselves do not hold the data.  Presumably the *bptr
+element of each struct points to the calloc'd memory for the actual buffers.
+F) And finally we have some clue what the 'owner' value is, so we now need to go back and actually comment this throughout the other source.  Done 20180925, 16:45
+
+G) The purpose of the gDigRawRetQ queue is apparently to hold messages saying that FIFOs need to be read out.
+H) The purpose of the gDigRawQ queue is apparently to hold messages saying that FIFOs *have* been read out and should be handled by the sorter.
+
+
+2) serviceOneBuffer()	
+

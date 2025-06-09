@@ -1,0 +1,565 @@
+Useful historical notes associated with changes in the way sender and receiver work.
+
+SUMMARY: We decided to eliminate the concept of "trigger data must look like digitizer data".  
+This resulted in changes to data structures and the way sender builds buffers.  
+
+-------------  LONG email trail follows.
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Monday, August 1, 2022 3:50 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: IOC data streams
+
+Had one last commitment I made below.  Reciever has been updated.  Latest cut will support both new and older munch files.  I went ahead and hacked in a very simply to get trigger data dumped to disk.  Nothing fancy, just anything that’s not digitizer data will get dumped to a “<run_name>_DIAG” file, which should be enough to handle any initial testing when the need arises.
+
+https://svn.inside.anl.gov/repos/dgs/gtReceiver/dgsReceiver
+
+Now I’m going into full cutoff from everything not GRETA.
+
+From: Oberling, Michael B. 
+Sent: Monday, August 1, 2022 2:27 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: IOC data streams
+
+P.S. if you want to return just DAQC{CN}_CV_OutLoop# back to it’s 1-7 to avoid/defer screen updates, that’s totally understandable too.
+
+Yep, off to GRETA at this point the IOC is your problem :P
+
+From: Anderson, John T. <jta@anl.gov> 
+Sent: Monday, August 1, 2022 2:25 PM
+To: Oberling, Michael B. <moberling@anl.gov>
+Subject: RE: IOC data streams
+
+Go ye forth down the GRETA hole.  I’m gong to segue into putzing with scripts until the meeting at 4.
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Monday, August 1, 2022 2:21 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: IOC data streams
+
+Done polishing up outLoop and Sender.   Note I corrected a stupidity while in outloop, where all the outLoop statistics PVs start at 0 except “DAQC{CN}_CV_OutLoop#” which started at 1...   I changed DAQC{CN}_CV_OutLoop to be consistent.  Feel free to change to either 0-6 or 1-7 if you have a preference and/or if one is more consistent with your inLoop PVs.  My only goal here is to just make it consistent, however, that may be defined.
+
+DECL      (float,    DataLost_Board0,            DAQC{CN}_CV_OutLoop0) //DAQC{CN}_CV_OutLoop1) // Why am I different?  Please fix me.
+DECL      (float,    DataLost_Board1,            DAQC{CN}_CV_OutLoop1) //DAQC{CN}_CV_OutLoop2)
+DECL      (float,    DataLost_Board2,            DAQC{CN}_CV_OutLoop2) //DAQC{CN}_CV_OutLoop3)
+DECL      (float,    DataLost_Board3,            DAQC{CN}_CV_OutLoop3) //DAQC{CN}_CV_OutLoop4)
+DECL      (float,    DataLost_Board4,            DAQC{CN}_CV_OutLoop4)
+DECL      (float,    DataLost_Board5,            DAQC{CN}_CV_OutLoop5)
+DECL      (float,    DataLost_Board6,            DAQC{CN}_CV_OutLoop6)
+
+Attempted a quick compilation, but looks like you may still be working on inLoop, so please forgive any syntax error I may leave behind.
+
+Best,
+-Michael
+
+From: Oberling, Michael B. 
+Sent: Monday, August 1, 2022 1:45 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: IOC data streams
+
+Sounds good.  We can include checking if you think there is something that would be of value to check.  That functionality is useful for the digitizers especially when releasing new firmware to perform high statistics error checking. 
+
+Also, attempting to generate a technically detailed email in a drive through was not the easiest thing to do.  That last message was still pretty much gobbly guck, but has been cleaned up below if the original was unintelligible.
+
+I’ll modify SendReceiveSupport.c now to update its output, and make a pass at receiver to restore nominal non-trigger operation when using either new or old ioc munch files.  If you haven’t yet expanded the statistics counters for the extra channels for outLoopSupport.c/outLoop.st, I’ll throw that in too.  Actually dumping trigger data to disk will follow when you think it’s ready to test.  Receiver is long overdue for a cleanup pass and that will need to happen when I cross that bridge. (Don’t worry it’s a small bridge to cross, but a bridge none-the-less.)  Until then it should be able to operate in “non-save” mode with the trigger data.
+
+However, just to warn you, I’m absolutely cutting off from everything for a while (>8 Man hours), after this pass on the IOC sender and outLoop to make progress on GRETA.
+
+
+From: Oberling, Michael B. moberling@anl.gov 
+Sent: Monday, August 1, 2022 1:05 PM
+To: Anderson, John T. jta@anl.gov
+Subject: Re: IOC data streams
+
+Oops, accidentally hit send as I pulled out of the drive through.  That last bit of gobbly guck was heading for:
+
+Basically we only need to have non-0xFF data types for buffers that will contain data that needs to be decomposed into multiple discreate messages and/or contains a timestamp.  Ok, that’s 100% of all data.. ever.  But basically it’s only needed when the data is to be folding into analysis, so that it can be assigned an official Geb ID, so they know what they have.
+
+Of course we could define any packaging/prepressing we want too, especially for data that’s not intended for analysis.  We have full control of the process.  However, a data type of 0xFF, or any other type that's not been defined in receiver for a given board can just default to simply dumping the raw buffer data to the an output file in the order it was received.  The order it was generated is guaranteed to be preserved in this process.
+
+I changed my mind to making 0xFF as the nominal "unspecified" data type to maintain backwards compatibility.  i.e. type 0x00 for a digitizer will mean "normal" digitizer data.  On the same note of backwards compatibility it would then also be logical to define a digitizer as "board type" 0x0.
+
+
+From: Anderson, John T. <jta@anl.gov> 
+Sent: Monday, August 1, 2022 1:30 PM
+To: Oberling, Michael B. <moberling@anl.gov>
+Subject: RE: IOC data streams
+
+OK, so rawEvt is currently defined as
+
+typedef struct {
+                unsigned int id;                                 // unique id for this buffer. never changes.
+                unsigned int *datapcrosscheck; // data pointer cross check.
+                unsigned int board;                         /* identifier of which board within the VME crate this data is related to */
+                unsigned int len;      /* length of the data buffer this struct points to, in BYTES */
+                unsigned int *data;                         /* pointer to the actual data buffer this structure talks about */
+                owner_enum owner;                     /* list of values from enum immediately above */
+//            char *board_type;  /*  board TYPE number data is related to */
+} rawEvt;
+
+I removed the commented-out char *board_type and put in
+
+unsigned short board_type; and
+unsigned short data_type;
+
+When transferTrigFifoData() or transferDigFifoData() is called by inLoop, both of those functions take a buffer out of the queue and then do the assignment
+
+bd = &daqBoards[bdnum];
+
+This provides access to the daqBoards structure that is part of devGVME.c.  In there the function devGVMECardInit() fills up the daqBoards structure when the system is initialized.  That structure already contains a board_type entry.
+
+In readDigFIFO.c and readTrigFIFO.c, where the functions were already transferring over the board NUMBER to the packet, I’ve now added transferring the board TYPE number.  The digitizer readout sets the data_type always to 0, but for triggers the data_type is the FIFO number index.
+
+Since outLoopSupport is going to need to now key off of the board_type, I first created a set of #defines in DGS_DEFS.h for the board type numbers and then went into outLoopSupport.c and modified the function CheckAndMoveBuffers() to use these #defines in a switch() statement wrapping most of that function’s operation.  The switch()’s default case (if board_type isn’t a digitizer) is to issue an error message and return, that I expect you’ll replace with trigger data checking when you get to this task.
+
+   
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Monday, August 1, 2022 12:24 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: IOC data streams
+
+Sounds like a plan.  That will also make the bypassing logic trivial for outLoop.
+
+From: Anderson, John T. <jta@anl.gov> 
+Sent: Monday, August 1, 2022 12:23 PM
+To: Oberling, Michael B. <moberling@anl.gov>
+Subject: RE: IOC data streams
+
+Okey dokey.  I am ok with modifying inLoop and the rawEvt struct as you propose, and will do that today.  When I get a compile I’ll send email with values that I’ve assigned to the type field.
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Monday, August 1, 2022 12:19 PM
+To: Anderson, John T. <jta@anl.gov>
+Subject: IOC data streams
+
+Just re-popping this email so it’s not lost in the other noise, as this relay branched and fell off of the “various” email thread.
+
+From: Oberling, Michael B. 
+Sent: Monday, August 1, 2022 10:53 AM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: various
+
+Apparently trig_buffer_converter.c was removed because it wasn’t part of the project as of your commit on 20220728.  Therefore when I merged that commit into con6_work it was also removed from that tree.
+
+Looking at that file, however, I think we can indeed work without it manipulating the date within the IOC.
+
+The easiest way to do this, from my perspective in the receiver/sender, would be to have the board_type identified in the headers that senders prepends to all buffers.  This provision is already in place.  There is a 32-bit integer reserved for the message type of each buffer that the server sends to the receiver.  That could be easily used to identify any number of things, as that’s a lot possible ID codes.
+
+Similarly, each buffer has a record associated with it for ancillary data called the “rawEvt” struct.  In the past there was a char* for the board_type, and I’d propose that we bring that back and make it an unsigned short int.  You could assign that 16-bit object, at the time you grab the buffer in inLoop, to indicate what you are pushing into it.  I could then copy the 16 bit value, verbatim, into the upper 16-bits of the “type” field that sender is already generating.
+
+An example definition might be:
+
+3..0: board type;               // ANL Digitizer, Master, Router.  There’s not reason I can see that one would need to differentiate between slave and master digitizers at this time, but certainly would not hurt.
+7..4: board index;             // Not necessary for digitizers which already contain such data in their headers, but where needed, you could use this to identify which board sent this data to the receiver, such as in the case of multiple routers.
+15..8: data type;               // All codes could be unique pre board type, if desired.
+23..16: reserved;              // If you like we could extend this from 16 bits to 24 bits, so that there is room for expansion.
+
+Obviously this could just be individual unsigned char’s as implemented in the rawEvt struct, where sender simply does the necessary bit shifting/masking when it forms the header (which it would need to do anyway).
+
+
+From: Oberling, Michael B. 
+Sent: Monday, August 1, 2022 10:11 AM
+To: Anderson, John T. <jta@anl.gov>
+Subject: RE: various
+
+Yeah, after working with Darek over the course of I’ve been rebuilding the system summary and control displays.  In this view no consideration is given to “where” data comes from, only that it is presented to the user in a manner consistent with how they “think” about the system.  I’ve been attempting to organize by function/use.
+
+The summary display, and it’s spawnable sub-windows are all completely sanitize display with the only controls being provided are those that are completely “safe,” such as counter resets and counter modes.  This window is geared toward monitoring the system, obviously, but also specially geared towards people “on watch” who will often have no familiarity with the system, outside of on the spot conversations, on the day of the run.  There fore I’ve reduce this window to pretty much the bare minimums, and an argument could be made that even more status information could be pulled off of this window and onto other detail breakout screen such as Timestamp and the Link Locked bitmap.  However, it a balance and these screen are typically monitored by the person on watch, and then when issues develop a more experienced system user as well (think Clause, Darek, Pat, ect.), so it’s optimized as a happy medium to fill both of those rolls.  Not every run uses throttle status, is on a spawnable sub-window off of this screen.  And you read the logic there exactly as intended.  If all trigger stop, or are being severely curtailed,  due to throttle you can use the bitmap to figure out where the problem is, where as the counters can be used for monitoring overall statistics to check if that coincides with the “experienced user’s” expectation for their setup. 
+
+It was an active choice to not include information from router counters 1-5, as that only comes into play during diagnostics.  If you lack triggers at the highest level you know enough to know you have a problem.  There’s actually another display related to that not shown here: a Trigger Rate History, that provides a chart of all 8 trigger rates both vetod and unvetoed over the last ‘n’ minutes. 
+
+All of these panels have a “status” or “summary” version and a “control” version.  If someone opens up the main “control overview” screen rather than the main “status overview,” then the windows they spawn from that window are also the control versions of the various screen (where applicable).  As such there is indeed a control version of the “throttle status” screen, that make the “boards enables” controls rather than just indicators.  At the moment there’s not much else to it, but that would certainly be the place to put some or all of the controls you suggest.   
+
+Ultimately, These windows, both control and status version, are intended to carry things that an “experienced user” is likely to use or toggle with any frequency.  They are not intended to be an outright replacements for the “Master” and “Router” screens, in binging forward every last possible control and status indicator.
+
+-------------------------------------------
+
+•	I actually screwed up one part of the merge.  I should have taken in the folders in con6_work rather than con6_202207XX as the base for the devel_tracker,  as I had previously remerged con6_202207XX into con6_work.  However given that we know that versions prior to the point we are at now had issues, I’m not too concerned that devel_tracker’s history only goes back so far as your recent commits to SVN on 202207XX.  We can always leave con6_work work deeper dives.
+o	We also have even older archived and forggon con6 trackers on svn:
+	https://svn.inside.anl.gov/repos/dgs/con6_20220728 (Goes back to July 2022)
+	https://svn.inside.anl.gov/repos/dgs/con6_work (Goes back to May 2020, and has merged in all of con6_20220728)
+	https://svn.inside.anl.gov/repos/dgs/devel8 (Goes back to April 2019)
+	https://svn.inside.anl.gov/repos/dgs/GlobDevTop/9-22  (Goes back to January 2019)
+	https://svn.inside.anl.gov/repos/dgs/DGS_SW/EPICS/trunk/devel (Goes back to December 2011)
+o	I’m not sure we need all of these. I think the very earliest one may be of some archival value… maybe, but I don’t think I feel like I lost anything important if the other 4 on this list disappeared.  (As we know nothing ever truly disappears for svn…)
+•	trig_buffer_converter.c: Never even heard of it until now, so this was not intentional.
+•	Yep I was going to follow up with you this week on how outloop is going to break everything you are trying to do unless it is updated.
+•	You one step ahead of me on gretDet.dbd.  I honestly have been averting my gaze and just jumping immediately to the end of the file up to this point.  However, we can start to open a few new cans of worms now that a few previously opened cans have been cleaned out.
+
+
+From: Anderson, John T. <jta@anl.gov> 
+Sent: Friday, July 29, 2022 9:51 PM
+To: Oberling, Michael B. <moberling@anl.gov>
+Subject: various
+
+In your screens I don’t see the counter in the Router that’s supposed to count throttle requests unless it is hidden under the global controls window.  The eight diagnostic counters of the router are supposed to be
+
+1)	Count of trigger algo 1 (max/aux/ram) trigger messages received by router from master trigger
+2)	Count of trigger algo 2  (sumX) messages
+3)	Count of trigger algo 3  (sumY) messages
+4)	Count of trigger algo 4  (sumXY) messages
+5)	Count of trigger algo 5  (CPLD fast strobe) messages
+6)	Count of number of times link L serdes RX machine has lost lock
+7)	Count of number of times LOCK* signal from link L DS92LV18 chip has had rising edge
+8)	Count of leading edges of throttle requests to master trigger
+
+The indicators of throttle request are great for throttle requests that persist for a second or more (EPICS update rate), but the counter is a better indicator of short duration throttles.  
+
+I’m curious if you’ve moved all the throttle controls to the screens.  The list is
+
+•	ANY_THROTTLE_WIDTH_REG
+•	THROTTLE_LIMIT_TIME_REG
+•	Selection of throttle monitoring on NIM output thru DIAG_PIN_CTL_REG
+•	Masking/forcing of throttle through MISC_CTL2 register
+•	THROTTLE_STATUS (which it appears you’re already using)
+
+It seems that the throttle logic is something that could do with some screen artwork (like MyRIAD and remote trigger) to guide the user into understanding how the knobs work.
+
+-----------------------
+A reason I think we want to set up the IOC to read out FIFOs from the router triggers in addition to the master trigger is the information available in the channel FIFOs of the router.  Each router channel FIFO has four modes based upon a bit-pair in the CHAN_MON_FIFO_CTL register.  If the bit-pair is “01” then the data presented to the FIFO is 
+
+ANY_Xs(i) & ANY_Ys(i) & ANY_THROTTLE_REQUEST & "00000" &  THROTTLE_REQUESTS;
+
+The WE control for channel FIFOs is similarly selectable by the CHAN_MON_FIFO_WE_CTL register, allowing you to select between OFF, ON, when data at input to FIFO is nonzero or when data in any channel is nonzero.
+
+The channel FIFOs are currently 1K deep objects, so if ON all the time it takes 20us to fill.  That’s too short for IOC timeframes but I think it would be easy to make these much deeper and/or modify the throttle monitoring to write timestamps and only write on edges of the throttle.  Either way, to truly understand the system this is data we should be saving so that Darek and other users that run fast can have a complete record of how often each digitizer was throttling.
+
+---------------------
+There are some worrisome differences if I go back a ways and compare, but this is thanks to you re-merging trees so that I can use the far better Tortoise tools to do so.  I see that there are a couple things in the ‘Parameter’ files that have changed meaning that the spreadsheet code will have to be updated.  I will work on that this weekend.
+
+1)	asynDigParams.c, SVN #6289, has a pile of calls to setUIntDigitalParam that revision #6654 does not put in.
+a.	It appears these all just initialize all the parameter values to 0xffffffff and that they would be overwritten on the first scan of all the parameters, so likely not really needed, but there’s something to be said for loading them with the register initialization values from the spreadsheet.
+2)	The old params.h files define an enum at the end with the number of parameters in the file; the spreadsheet-generated .h does not write that enum.
+
+---------------------
+I see you also deleted trig_buffer_converter.c.  Is this tacit approval from you that we no longer need to make trigger data “look like digitizer data”?
+
+---------------------
+I also see that you haven’t updated outLoop to handle more than four boards in a crate.  We should schedule when you want to do this.
+
+---------------------
+An item that is still bothering me in the dgsIoc tree is the large size of gretDet.dbd.  I understand why we would want to have some registrar() lines in there, because those will expose functions of interest, but I do not for the life of me understand why the first 14,243 lines are in there at all.  It would seem to me that all these field definitions should be inherent to EPICS base types and/or asyn base types, and already be part of the compile from building base.  When one of us gets the chance we should try rebuilding with these lines all cut out and see what, if anything, happens.
+
+The use of gretDet.dbd also bothers me because it is a file that is outside of the overall model of there being two categories of files (manual databases versus things generated by spreadsheet).  Instead it seems to overlap with dgsDrivers.dbd and I’m curious if moving the registrar lines from gretDet.dbd to dgsDrivers.dbd would still work.  If so, then arguably gretDet.dbd goes away completely and with it one more accounting headache.
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Friday, July 29, 2022 8:37 PM
+To: Seweryniak, Dariusz <seweryniak@anl.gov>; Carpenter, Michael P. <carpenter@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: RE: SL7 system work
+
+New IOC munch file has been released on DFMA.  I’m going to keep this super brief: Everything is now working as it should.  Throttle bits get set at high rate, and returning back to the cleared state at low rate.  Dig FIFO’s are now being completely drained even if they reach the half full mark.  Test data merges and verifies without issue.  (images attached.)
+
+Darek, I can now return to you the keys to the system.
+
+Have a great weekend all!
+-Michael
+
+P.S. Trigger IOC still uses the last munch file release at this time, so if you need to read out trigger FIFOs in the next run there’s more work to do.
+
+From: Seweryniak, Dariusz <seweryniak@anl.gov> 
+Sent: Friday, July 29, 2022 9:11 AM
+To: Oberling, Michael B. <moberling@anl.gov>; Carpenter, Michael P. <carpenter@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: RE: SL7 system work
+
+Hi Michael,
+
+I will not be using the DAQ today.
+
+Cheers,
+Daerk
+
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Friday, July 29, 2022 8:45 AM
+To: Seweryniak, Dariusz <seweryniak@anl.gov>; Carpenter, Michael P. <carpenter@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: Re: SL7 system work
+
+Ok, just let me know if your plans change.  Yesterday I migrated DFMA to the final SL7 DAQ folder structure, and it continues to operate with the existing IOC munch file without any issues.
+
+However the new IOC munch is still a work in progress.  I'll be poking at the system and/or randomly breaking it and fixing it throughout the day unless I hear that you need to use it.  As always, I'll be able to flip it back to an operational state at a moment's notice if anything comes up.
+
+Best Regards,
+-Michael
+
+________________________________________
+From: Seweryniak, Dariusz <seweryniak@anl.gov>
+Sent: Thursday, July 28, 2022 4:29 PM
+To: Oberling, Michael B. <moberling@anl.gov>; Carpenter, Michael P. <carpenter@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: RE: SL7 system work 
+ 
+Hi Michael,
+ 
+I am done with collecting data for the DSSD and the PPAC.
+I will not use the DAQ tomorrow.
+ 
+Cheers,
+Darek
+ 
+ 
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Thursday, July 28, 2022 11:21 AM
+To: Seweryniak, Dariusz <seweryniak@anl.gov>; Carpenter, Michael P. <carpenter@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: RE: SL7 system work
+ 
+Darek,
+ 
+Given that we are looking to inject this IOC patch before your next run, if you have no objections, I’m planning to also take the opportunity the next time I have control of the system to bring your daq file/folder structure up to the “final” SL7 release standard so that dfma, xa, dub (after it is “refreshed”) and dgs at some point, are all identically structured clean DAQ systems.  This is really important to make sure that these systems continue to be maintainable and understandable.  The only change you are likely to notice is your script directory will change to:
+ 
+/global/edm/scripts/
+ 
+Instead of where it is now:
+ 
+/global/devel/systems/dfma/scripts/
+ 
+Your scripts will be copied over at the point I do the switch over so that all recent changes are preserved.  I’ve already done all the other preparatory work in advance and it will only take about 15 minutes to perform the switch over, and we always switch back at any point if needed.  Again, it will make to most sense to do this at the same time I take the system for the next munch file test.
+ 
+Also there I’ve created a tarball of the current system (i.e. the ‘devel’ folder) as a secondary backup prior, if needed.
+ 
+Let me know if you have objections or concerns.
+ 
+-Michael
+ 
+ 
+From: Seweryniak, Dariusz <seweryniak@anl.gov> 
+Sent: Thursday, July 21, 2022 3:52 PM
+To: Carpenter, Michael P. <carpenter@anl.gov>; Oberling, Michael B. <moberling@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Subject: RE: SL7 system work
+ 
+One could have a UserScreens tab in the main window of the commander where people
+could add their own screens.
+ 
+Darek
+ 
+From: Carpenter, Michael P. <carpenter@anl.gov> 
+Sent: Thursday, July 21, 2022 9:37 AM
+To: Oberling, Michael B. <moberling@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: Re: SL7 system work
+ 
+Hi All,
+ 
+I agree with John that there should be only one place where c codes sits for compilation of munch files, since the munch files is generic to all systems regardless of configuration. By propagating source files, we run into the real possibility that version control is lost and each system differs in some way. 
+ 
+With regards to EDM screens, there will be certain screens that need to be specific to the configuration, but I would say that a large fraction of the screens can run of the same EDM window. My concern now is that we have mutilple people hacking screens and that is the easiest way to propagate many screens. I strongly believe we need to have some mechanism for managing screens as well. My guess is to store them in SVN and download when needed or upload when modified. 
+ 
+Mike
+ 
+Michael Carpenter
+Argonne National Laboratory
+9700 South Cass Ave
+Argonne, IL 60439
+(630)252-5365
+________________________________________
+From: Oberling, Michael B. <moberling@anl.gov>
+Sent: Wednesday, July 20, 2022 11:39 PM
+To: Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Anderson, John T. <jta@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: Re: SL7 system work 
+ 
+Thanks for the feedback.
+ 
+Claus, yes 100% agree.  I also found a few cases where I didn't complete the search and replace on the "Trig Control" screen.  There's more sweeping there before we propagate.  Meanwhile, it's zero difficulty to fire up a second IOC, presuming the bootloader has been flashed into the device.
+ 
+John, good catch regarding base.  All the junk in base was in fact an oversight.  I've now reduced it from: 
+ 
+[dgs@dgs8 base]$ ls 
+R3.14.10/  R3.14.10.tgz  README  base-3.14.12.1.tgz  base-3.14.12.8/  baseR3.14.12.1.tar.gz  baseR3.14.12.8.tar.gz
+to simply:
+ 
+[dgs@dgs8 base]$ ls 
+base-3.14.12.8/
+ 
+The base folder should, at least presently, continue to live on the live DAQ systems.  There are compiled libraries contained within that are referenced by EDM.  I'm also not yet fully convinced that one will never have the need to recompile the softIOC or edm.  For example, I actually had to recompile both tonight after finding the system inoperable when logging in remotely.  EDM: due to hard paths that get baked in.  (could probably hand edit the output files to avoid recompiling, but eww..)   The softIOC: to remove this warning when starting it:
+ 
+  Warning: IOC is booting with TOP = "/global/softIOC"
+          but was built with TOP = "/export/home/data1/dgs/devel6_sl7/gretTop/9-22/dgsSoftIOC"
+ 
+It's true that as long as the path does not change again that recompilations should not be required again, but I think it would be best to let this simmer with a few real applications first, to make sure we have all the gotcha's ironed out of the system.  And, also EDM (and maybe others) are still dependent on the compiled libraries contained within base.
+ 
+I also went through and expunged all .svn folders that were scattered here and there.  (find -name ".svn" | xargs /bin/rm -rf)
+ 
+I also 110% agree with you regarding building munch files and PV databases:
+ 
+"However, all other building of databases/munch files will never occur on the DAQ host directly and has thus been expunged from this structure."
+ 
+In terms of scripts, yes there will always be a "bit" of tweaking, but it's at the point where it's surprisingly little that needs to change, due to liberal use of loops where one specifies links, crates and/or dig'es.  It's becoming fairly generic, up to the point where the detector specific configurations are applied in one of two scripts (digsetup and trigalgo).
+ 
+In terms of the .cmd files, that another place where I've attempted to optimize to ease transitions.  The ports and NTP IP have been moved to a common file that they all pull in.  The Digitizer IOCs, regardless of system, can use either a vme##.4MDIG.cmd or a vme##.2MDIG2SDIG.cmd file.  Of course other ones can be made, or even "generated" with wildcards if one were to invest the time to make scripts.
+ 
+However, I'm not inclined to get too carried away with attempting to make everything the same/ascertain complete generalization.  Certain screens can be very system specific, for example.  It would be one thing if we were going to deploy dozens of these systems, but I think it's OK to have a well documented startup procedure too, that might be a bit more hands on, for the scales we are working with.  Over generalization of course has it's own  drawbacks, but it is all a matter of degree, of course.  There's a lot of generalization that has already been baked in up to this point, and sure there is more low hanging fruit to be had.  I may have used too strong of language in saying this the "final" SL7 structure. Improvements can certainly continue to be made, and we need not have every last answer ahead of time.
+ 
+I know I certainly didn't for the first two/three iterations (depending on how you count), but it's really starting to get.... dare I say... easy at this point.  Of course, I should run the opinion by Torben first.  Each system starts with him, and I only see it after it's already at the point I can ssh into it and the ports open :)
+ 
+________________________________________
+From: Müller-Gatermann, Claus <cmuellergatermann@anl.gov>
+Sent: Wednesday, July 20, 2022 10:53 PM
+To: Anderson, John T. <jta@anl.gov>; Oberling, Michael B. <moberling@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: Re: SL7 system work 
+ 
+My short comments. First great progress. Then while investigating DFMA yesterday I found as John mentioned that some screens are still using slave digitizers and the PVs of Digs 3 and 4 are missing instead. That’s a leftover from dub being a copy from dgs. Maybe we should tackle that before start reducing  screens from DFMA. Reducing is obviously the way to go in my Opinion as well. Other than that even if the hardware is not available or connected, I would plan dxa to be a 3 IOC DAQ (2+trigger). The advantage  would be that dub and dxa would be exactly same systems. Also we already planned earlier to use both Ge E Outs to connect for different gain settings, which takes 40 channels. For area one we would need then (I know not necessarily for one Dig) another IOC up to 40 channels or for the betas and ancillary detectors. I like exact copies. I have more time tomorrow if nothing explodes and can jump in on screens or updating firmware after a short intro. 
+ 
+Cheers
+ 
+Claus
+ 
+———————————————————
+Claus Müller-Gatermann
+Argonne National Laboratory
+9700 S Cass Av, Bd. 203
+Lemont, Il-60439
+—
+ 
+________________________________________
+From: Anderson, John T. <jta@anl.gov>
+Sent: Wednesday, July 20, 2022 7:55:31 PM
+To: Oberling, Michael B. <moberling@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: RE: SL7 system work 
+ 
+I would like to ask a question.  If the intention and plan is for DAQ machines to have “releases”, why are you propagating large swaths of source code?  For example, why is there a ‘base’ folder tree in this at all?  I don’t understand why you would want to have a single .c, .h, .cpp, .o, .d or any other source or intermediary compilation file on a “run my DAQ” box.
+ 
+Seems to me that we should have one and only one “true source” – to my mind, this is SVN – from which a small number of “development” machines with the correct compilers/licenses/etc. can build munch files and databases, but all “DAQ” machines should contain only the absolute minimum number of files necessary to host the booting of IOCs, display screens and run scripts.
+ 
+Secondly, since the different setups have different organizations of devices (master vs. slave digitizers, number of IOCs, number of boards per IOC, number of types of boards per IOC, etc.) screens and scripts will continue to be difficult to port between systems unless we are able to generalize all of them to a simple and consistent method of “system definition wildcards”.  
+ 
+John
+ 
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Wednesday, July 20, 2022 6:58 PM
+To: Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Anderson, John T. <jta@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: RE: SL7 system work
+ 
+Hi All,
+ 
+Quick-ish update:
+ 
+Next step for X-Array is to update trigger and digitizer firmware with the files in /global/fw_release/DXA_20220720.  I know John is working on a way to do this in the IOC, but I’m thinking that for X-Array’s 6 boards we can carry them to out lab one last time.  After that it’s screens and scripts.  However, it much easier to reduce screens than to expand them (… microball->dfma …)  Before that happens I want to copy over /global/devel/systems/dfma/screens/ on dgsx to /global/edm/screens on dgs8 as there were updates and changes on dfma’s setup since yesterday’s rsync.
+This took much longer that it would have if I was just trying to get the system running, since I really wanted to represent the “final” organization/structure for SL7 DAQs going forward.  I’ve also been carefully documenting the steps along the way, so that when combined with Toben’s notes we can easily deploy this from one DAQ to the next, even years in the future when none of this is fresh in our minds.
+ 
+Up to now, I’ve been incrementally cleaning/sweeping/organizing/optimizing with each SL7 system implementation, but this one makes the leap to what I would call the final structure, pending any input/feedback otherwise.  However, I think it will be very easy for all to adjust to this new organization, as it’s very similar to the old organization with all the excess removed.
+ 
+The whole first level of the tree (asides form the EPICS “base”) is expanded below.  All mention of “devel”-anything is gone… as we’re going to be operating “releases” now for our live DAQs!  (I know… it’s a crazy concept.)  I actually would like to call the root folder “daq” rather than “global” to further differentiate the release systems from the devel system(s).  If your email viewer allows, you will see green and blue text highlighting below. The 4 folders highlighted in green are the essential ones to run the DAQ;  the 2 blue folder are ancillary to the core DAQ function.  (For example the receiver is provided here for reference/testing, and would likely be hosted/copied elsewhere for actual operation if I understand your guy’s typical workflow.)
+ 
+[dgs@dgs8 global]$ ls . edm/ fw_release/ ioc/ receiver/ softIOC/
+.:
+base/  edm/  fw_release/  ioc/  receiver/  softIOC/
+ 
+edm/:
+dxacommander*  dxacommander2*  extensions/  screens/  scripts/
+ 
+fw_release/:
+DXA_20220720/
+ 
+ioc/:
+bin/  boot/  db/  dbd/  mv5500/
+ 
+receiver/:
+dgsReceiver*  dgsReceiver.cpp  dgsReceiver.h  psNet.h  start_run.sh*
+ 
+softIOC/:
+bin/  configure/  db/  dbd/  dgsSoftIOCApp/  include/  iocBoot/  lib/  Makefile
+ 
+The structure should continue to permit one to rebuild the softIOC and the receiver, of course.  However, all other building of databases/munch files will never occur on the DAQ host directly and has thus been expunged from this structure.  “systems” is gone, as it is required that if you want to access a given DAQ’s run control you must ssh into that DAQ’s host, which is pretty much how we’ve been operating for several years at this point.
+ 
+In the image below, it shouldn’t even be taking data at all with the old board firmware, but somehow it does at least for few seconds at a time.  (Even so, it still doesn’t crash, even with the wrong firmware in the boards.)    Torben, it also seems that this machine is serving the NTP to the IOCs just fine, as the data is flowing!
+ 
+ 
+ 
+ 
+From: Müller-Gatermann, Claus cmuellergatermann@anl.gov 
+Sent: Wednesday, July 20, 2022 4:38 PM
+To: Oberling, Michael B. <moberling@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>
+Subject: Re: SL7 system work
+ 
+99% sure Master is in the second slot and Router in the third. We left the first one open, when we moved the IOC more to the right to avoid short-circuits
+ 
+ 
+________________________________________
+From: Müller-Gatermann, Claus <cmuellergatermann@anl.gov>
+Sent: Wednesday, July 20, 2022 10:53 PM
+To: Anderson, John T. <jta@anl.gov>; Oberling, Michael B. <moberling@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: Re: SL7 system work 
+ 
+My short comments. First great progress. Then while investigating DFMA yesterday I found as John mentioned that some screens are still using slave digitizers and the PVs of Digs 3 and 4 are missing instead. That’s a leftover from dub being a copy from dgs. Maybe we should tackle that before start reducing  screens from DFMA. Reducing is obviously the way to go in my Opinion as well. Other than that even if the hardware is not available or connected, I would plan dxa to be a 3 IOC DAQ (2+trigger). The advantage  would be that dub and dxa would be exactly same systems. Also we already planned earlier to use both Ge E Outs to connect for different gain settings, which takes 40 channels. For area one we would need then (I know not necessarily for one Dig) another IOC up to 40 channels or for the betas and ancillary detectors. I like exact copies. I have more time tomorrow if nothing explodes and can jump in on screens or updating firmware after a short intro. 
+ 
+Cheers
+ 
+Claus
+ 
+———————————————————
+Claus Müller-Gatermann
+Argonne National Laboratory
+9700 S Cass Av, Bd. 203
+Lemont, Il-60439
+—
+ 
+________________________________________
+From: Anderson, John T. <jta@anl.gov>
+Sent: Wednesday, July 20, 2022 7:55:31 PM
+To: Oberling, Michael B. <moberling@anl.gov>; Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: RE: SL7 system work 
+ 
+I would like to ask a question.  If the intention and plan is for DAQ machines to have “releases”, why are you propagating large swaths of source code?  For example, why is there a ‘base’ folder tree in this at all?  I don’t understand why you would want to have a single .c, .h, .cpp, .o, .d or any other source or intermediary compilation file on a “run my DAQ” box.
+ 
+Seems to me that we should have one and only one “true source” – to my mind, this is SVN – from which a small number of “development” machines with the correct compilers/licenses/etc. can build munch files and databases, but all “DAQ” machines should contain only the absolute minimum number of files necessary to host the booting of IOCs, display screens and run scripts.
+ 
+Secondly, since the different setups have different organizations of devices (master vs. slave digitizers, number of IOCs, number of boards per IOC, number of types of boards per IOC, etc.) screens and scripts will continue to be difficult to port between systems unless we are able to generalize all of them to a simple and consistent method of “system definition wildcards”.  
+ 
+John
+ 
+From: Oberling, Michael B. <moberling@anl.gov> 
+Sent: Wednesday, July 20, 2022 6:58 PM
+To: Müller-Gatermann, Claus <cmuellergatermann@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>; Anderson, John T. <jta@anl.gov>; Seweryniak, Dariusz <seweryniak@anl.gov>
+Subject: RE: SL7 system work
+ 
+Hi All,
+ 
+Quick-ish update:
+ 
+Next step for X-Array is to update trigger and digitizer firmware with the files in /global/fw_release/DXA_20220720.  I know John is working on a way to do this in the IOC, but I’m thinking that for X-Array’s 6 boards we can carry them to out lab one last time.  After that it’s screens and scripts.  However, it much easier to reduce screens than to expand them (… microball->dfma …)  Before that happens I want to copy over /global/devel/systems/dfma/screens/ on dgsx to /global/edm/screens on dgs8 as there were updates and changes on dfma’s setup since yesterday’s rsync.
+This took much longer that it would have if I was just trying to get the system running, since I really wanted to represent the “final” organization/structure for SL7 DAQs going forward.  I’ve also been carefully documenting the steps along the way, so that when combined with Toben’s notes we can easily deploy this from one DAQ to the next, even years in the future when none of this is fresh in our minds.
+ 
+Up to now, I’ve been incrementally cleaning/sweeping/organizing/optimizing with each SL7 system implementation, but this one makes the leap to what I would call the final structure, pending any input/feedback otherwise.  However, I think it will be very easy for all to adjust to this new organization, as it’s very similar to the old organization with all the excess removed.
+ 
+The whole first level of the tree (asides form the EPICS “base”) is expanded below.  All mention of “devel”-anything is gone… as we’re going to be operating “releases” now for our live DAQs!  (I know… it’s a crazy concept.)  I actually would like to call the root folder “daq” rather than “global” to further differentiate the release systems from the devel system(s).  If your email viewer allows, you will see green and blue text highlighting below. The 4 folders highlighted in green are the essential ones to run the DAQ;  the 2 blue folder are ancillary to the core DAQ function.  (For example the receiver is provided here for reference/testing, and would likely be hosted/copied elsewhere for actual operation if I understand your guy’s typical workflow.)
+ 
+[dgs@dgs8 global]$ ls . edm/ fw_release/ ioc/ receiver/ softIOC/
+.:
+base/  edm/  fw_release/  ioc/  receiver/  softIOC/
+ 
+edm/:
+dxacommander*  dxacommander2*  extensions/  screens/  scripts/
+ 
+fw_release/:
+DXA_20220720/
+ 
+ioc/:
+bin/  boot/  db/  dbd/  mv5500/
+ 
+receiver/:
+dgsReceiver*  dgsReceiver.cpp  dgsReceiver.h  psNet.h  start_run.sh*
+ 
+softIOC/:
+bin/  configure/  db/  dbd/  dgsSoftIOCApp/  include/  iocBoot/  lib/  Makefile
+ 
+The structure should continue to permit one to rebuild the softIOC and the receiver, of course.  However, all other building of databases/munch files will never occur on the DAQ host directly and has thus been expunged from this structure.  “systems” is gone, as it is required that if you want to access a given DAQ’s run control you must ssh into that DAQ’s host, which is pretty much how we’ve been operating for several years at this point.
+ 
+In the image below, it shouldn’t even be taking data at all with the old board firmware, but somehow it does at least for few seconds at a time.  (Even so, it still doesn’t crash, even with the wrong firmware in the boards.)    Torben, it also seems that this machine is serving the NTP to the IOCs just fine, as the data is flowing!
+ 
+ 
+ 
+ 
+From: Müller-Gatermann, Claus cmuellergatermann@anl.gov 
+Sent: Wednesday, July 20, 2022 4:38 PM
+To: Oberling, Michael B. <moberling@anl.gov>; Lauritsen, Torben <torben@anl.gov>; Copp, Patrick Alexander <copp@anl.gov>
+Cc: Carpenter, Michael P. <carpenter@anl.gov>
+Subject: Re: SL7 system work
+ 
+99% sure Master is in the second slot and Router in the third. We left the first one open, when we moved the IOC more to the right to avoid short-circuits
+ 

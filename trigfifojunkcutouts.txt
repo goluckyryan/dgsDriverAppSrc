@@ -1,0 +1,1148 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    //datasize is in bytes, num of btytes to xfer from vme fifo
+    //constrain to no bigger than MAX_TRIG_RAW_XFER_SIZE
+    if (numwords==-1)
+        datasize=MAX_TRIG_RAW_XFER_SIZE;	//defined in DGS_DEFS.h, and is in BYTES
+    else
+        datasize=numwords * 4;	//numwords is the # of 32-bit words (from register), convert to BYTES
+
+    if (datasize>MAX_TRIG_RAW_XFER_SIZE) datasize=MAX_TRIG_RAW_XFER_SIZE;
+    printf("numwords %d (longs), datasize %d (bytes) datasize/4 %d (longs)\n",numwords,datasize,datasize/4);
+
+
+    /* get a raw data buffer for this board */
+    /* msgQReceive receives a message from the qFree queue; copies message to rawBuf; return value is # of bytes received, or a magic value ERROR. */
+    /* The length of the transfer is sizeof(int) as passed */
+	rawBuf = NULL;		//suppress warning, initialize pointer.
+    if(QueueUsageFlag == 1) // 1 means yes, use the queue system
+		{
+		queue_request_stat = getFreeBuf(&rawBuf);
+		if (queue_request_stat != Success)
+            {
+            printf("Xfr Dig FIFO : Starved for raw buffers- throwing away data\n");
+            return(queue_request_stat);	//inLoop will keep pounding until one frees up.
+            }
+        //here we assume we have a buffer. else we would have returned!
+        //set owner of rawBuf to "freshly copied from message queue"
+        printf("Xfr Dig FIFO : Got buffer\n" );
+        uintBuf = (unsigned int *) rawBuf->data;
+        rawBuf->board =  bd->board;  //copy board # from daqBoards[] system structure into rawBuf for identification
+        rawBuf->len = datasize/4; //Queues, unfortunately, are BYTE objects, but DMA wants 32-bit longword counts...
+        }
+    else	//user said not to use queues
+        {
+        rawBuf = NULL;
+        uintBuf = &TrigBitBucket[0];
+//		printf("Queues disabled, dumping to TrigBitBucket\n");
+        }
+
+        //we dma directly to the buffer if DMA is enabled, else copy in a for loop.
+        // if >= 64 bytes available, try to use DMA
+        if (datasize>=64) 
+            {
+            /*
+            * DMA_MAX_SIZE_XFER = 256K - 4 bytes
+            */
+             #ifdef MV5500
+             //DMA from fifo of digitizer to uintBuf.
+             dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, datasize);  //the actual read....
+             #endif
+
+
+			if (dmaStat != OK) 
+				{
+                 printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
+				//if DMA failed, presumably we here return the message back to the queue.
+				//In the hopes the transfer will be tried again somewhere?
+                if(QueueUsageFlag == 1)
+			        {
+					queue_request_stat = putFreeBuf(rawBuf);
+			        //It's possible the queue overflows at this point, so there should be a test
+					if(queue_request_stat != Success) return(queue_request_stat);
+					}
+                return(DMAError);
+          		}
+//			else 
+//				{
+//				printf("DMA success : stat %d datasize %d\n",dmaStat,datasize);
+//			    if(QueueUsageFlag == 0) // 1 means yes, use the queue system
+//			        for (j = 0; j < (datasize/4); j++) 
+//						if(j < 5) printf("Data read : %08X\n",TrigBitBucket[j]);
+//				}
+            }
+       else		//if only 64 or less bytes available, pump manually.
+			{
+	        // transfer with reg VME addressing, no DMA available
+	        // non-DMA transfer from fifo of digitizer to uintBuf.
+	        // fall-through case if we're not using DMA as enabled by #def
+			printf("Dumping %d words to buffer, not using DMA\n",(datasize/4));
+	        for (j = 0; j < (datasize/4); j++) 
+				{
+				*uintBuf = *((unsigned int *) bd->FIFO);  //longword by longword, pump mud.
+//				if(j < 5) printf("Data read : %08X\n",*uintBuf);
+				uintBuf++;
+				}
+			}
+    //
+    // at this point the data is transferred from digitizer's fifo and is in rawBuf->data if queueing is enabled.
+    // Change the state of the buffer to OWNER_Q_WRITTEN, and then enter the buffer 
+    // into the qWritten queue.
+    if(QueueUsageFlag == 1)
+        {
+		queue_request_stat = putWrittenBuf(rawBuf);
+        //It's possible the queue overflows at this point, so there should be a test
+		if(queue_request_stat != Success) return(queue_request_stat);
+	}
+
+    return(Success);   //if we haven't exited yet, declare success...
+
+}	//end function transferMTrigFifoData()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if 0
+ 
+	// For the Trigger, we have to putz with the buffer before the buffer
+	// can be passed off to the qWritten queue.  The data in the buffer has to
+	// be modified to fit the requirements of the sender/receiver/event builder,
+	// all of whom are quite married to specifics of the digitizer data format.
+	// To do that, we call WrapTriggerFIFOEvent().
+	//
+	// The board may have variable size data in it.  To check that, we have to read
+	// a register on the board that tells us how much data there is per 'event'.  This is accomplished
+	// by reading the MON7_FILL_CTL register at address 0x020C.
+		MON7_FILL_CTL_value = *(bd->base32 + 0x20C/4);	//do the read
+
+	// WrapTriggerFIFOEvent parses rawBuf into a 2nd buffer
+
+
+
+	TransferStatus = WrapTriggerFIFOEvent(rawBuf, MON7_FILL_CTL_value, bdnum, modifiedBuf);
+	//If the function returns NULL, there's a problem, so exit immediately
+	//and leave the buffers in the queues they are in.
+	if (TransferStatus != 0) return(TrigFIFOFormatError);  //TrigFIFOFormatError defined in the enum BufReturnVals, in DGS_DEFS.h
+
+	//
+    // at this point the data is transferred from digitizer's fifo and is in rawBuf->data.
+    // Change the state of the modified buffer to OWNER_Q_WRITTEN, and then enter the buffer 
+    // into the qWritten queue.
+    modifiedBuf->curptr = modifiedBuf->data;
+    modifiedBuf->owner = OWNER_Q_WRITTEN;
+    stat = msgQSend(qWritten, (char *) &modifiedBuf, sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+    //It's possible the queue overflows at this point, so there should be a test
+	if(stat) return(QueueOverFlowError);  //QueueOverFlowError defined in the enum BufReturnVals, in DGS_DEFS.h
+	
+	//having put the modified buffer into the qWritten queue, now put rawEvt back into 
+	//the qFree queue.
+    rawBuf->curptr = rawBuf->data;
+    rawBuf->owner = OWNER_Q_FREE;
+    stat = msgQSend(qFree, (char *) &rawBuf, sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+    //It's possible the queue overflows at this point, so there should be a test
+	if(stat) return(QueueOverFlowError);//QueueOverFlowError defined in the enum BufReturnVals, in DGS_DEFS.h
+
+    return(Success);   //if we haven't exited yet, declare success...
+						//Success defined in the enum BufReturnVals, in DGS_DEFS.h
+}
+
+#endif
+
+/*****************************************************************
+ * WrapTriggerFIFOEvent() is required because the sender/receiver
+ * software can't handle anything other than the original GRETINA
+ * format.
+ *
+ * The function receives as argument a pointer to a buffer of trigger data.
+ * The function then obtains a 2nd buffer off the free queue and copies
+ * the first buffer to the 2nd buffer, reformatting it into 'digitizer-like' data.
+ * Upon completion, the pointer to the 2nd buffer is returned back to the calling function.
+*******************************************************************/
+
+
+#if 0
+
+int WrapTriggerFIFOEvent(rawEvt *buf_to_process, unsigned int MON7_FILL_CTL_Value, int bdnum, rawEvt *processed_buf)
+{
+    struct daqBoard *bd;	//structure of board information
+    int datasize;			//amount of data to transfer
+	int input_data_index;	//number of words of buffer processed, at beginning,
+								//until the 0xAAAA is read
+	unsigned int *InBufDataPtr;	//for running through buf_to_process->data
+	unsigned int *OutBufDataPtr;	//for running through processedBuf->data
+	int num_tdc_words, num_trig_words;	//how many words of each type are in a trigger fifo message
+	int TDC_DATA_SKIPPED;	//flag bit from trigger board register to tell us if we should use TDC data.
+	int packet_length;
+	unsigned int tempval[4];	//for read-ahead in the input buffer
+	
+
+    bd = &daqBoards[bdnum];
+	datasize = buf_to_process->len / 2;		//this is the length of the buffer in 16-bit words
+											//because the reported length of a rawEvt is in BYTES.
+	//Now go through buf_to_process, converting trigger format to "digitizer" format.
+	//To make the data palatable for the sender/receiver/event builder, the first 4
+	//words must be as follows.
+	//0	FIXED 0xAAAAAAAA																															
+	//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+	//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]																															
+	//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+
+	//The PACKET LENGTH is defined as the # of 32-bit longwords in the event, not counting
+	//the 0xAAAAAAAA word.
+
+	//The HEADER LENGTH is defined as the # of 32-bit longwords in the header, not counting
+	// the 0xAAAAAAAA word.
+
+	//According to comments in Tim Madden code, header type 11 (0xB) was arbitrarily assigned
+	//as the HEADER TYPE for trigger data.
+
+	//the master trigger firmware writes a word of 0xAAAA then copies the algorithm-specific FIFO data
+	//to the bulk FIFO, followed by the TDC data if the TDC data is available.
+	// Format of the trigger algo portion of the data is
+	//
+	// a typical sort of 'event' looks like this:
+	//AAAA	header
+	//50FF	trigtyp		1
+	//0074	TS high		2
+	//BDD7	TS mid		3
+	//007A	TS low		4
+	//01C0	Wheel		5
+	//1234	Aux dat		6		--num trig words is usually 6
+	//008A	TDCtsLo		1
+	//0001	trigacks	2
+	//5074	Offset0		3
+	//810C	Offset1		4
+	//810C	Offset2		5
+	//810C	Offset3		6
+	//E8B2	Val/P0/P1	7
+	//080D	Val/P2/P3	8		--num tdc words is usually 8
+
+	// This routine maps this to the 'digitizer-like' header as follows:
+
+	//0	FIXED 0xAAAAAAAA  <== output this for every 0xAAAA header seen in input data
+
+	//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+	//     ^                  ^                       ^                  ^
+	//     |                  |                       |                  +--always 0
+	//     |                  |                       +--bits 11:0 of first "trig word"
+	//     |                  +-- calculated from read of MON7_FILL_CTL register
+	//     +-- taken from daq_board structure (->base value)
+
+	//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]  <== filled from words 3,4 of input data
+
+	//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+	//     ^                  ^                       ^                  ^
+	//     |                  |                       |                  +--from word 2 of input data
+	//     |                  |                       +--by previous fiat, the value 11 decimal (0xB)
+	//     |                  +--bits 15:12 of the first "trig word"
+	//     +-- defined as 3
+
+	// "trig words" 5&6 form the first 32-bit word of the output payload.
+	// the "tdc words" are packed into pairs to form 4 words of additional data, if TDC data is present.
+
+	//========================================================================================
+	//first step : find event boundary
+	//========================================================================================
+
+	InBufDataPtr = buf_to_process->data;  //I assume 'unsigned int' in VxWorks is a 32-bit object...
+	OutBufDataPtr = processed_buf->data;
+
+	// Get length of message parameters from trigger module register value
+	num_tdc_words = MON7_FILL_CTL_Value & 0xF;	//bits 3:0
+	num_trig_words = (MON7_FILL_CTL_Value & 0xF0) >> 4;	//bits 7:4
+	TDC_DATA_SKIPPED = (MON7_FILL_CTL_Value & 0x8000) >> 15;	//bit 15
+
+	input_data_index = 0;
+	if(*InBufDataPtr != 0x0000AAAA)
+		do
+			{
+			InBufDataPtr++;
+			input_data_index++;
+			} while((*InBufDataPtr != 0x0000AAAA) && (input_data_index < 100));
+
+	//if you read 100 words and never found the 0x0000AAAA, give up and exit in error.
+	if ((*InBufDataPtr != 0x0000AAAA) && (input_data_index == 100))
+		{
+		printf("Trig Buf Copy: Unable to find 0x0000AAAA in trig data\n");
+		return(-1);	//return of non-zero means error
+		}
+	else
+		printf("Trig Buf Copy: Trigger data first 0x0000AAAA found at offset of %d\n",input_data_index);
+
+	//========================================================================================
+	//Start processing after finding alignment.
+	//========================================================================================
+
+	do
+		{
+
+		//========================================================================================
+		//Build the 'event header'.
+		//========================================================================================
+		
+		//0	FIXED 0xAAAAAAAA																															
+		*OutBufDataPtr = 0xAAAAAAAA; OutBufDataPtr++;		//begininng of the digitizer header
+		InBufDataPtr++;						//point to word after the 0x0000AAAA
+		input_data_index++;
+
+		//do a little read-ahead to make for less ugly code.
+		tempval[0] = *InBufDataPtr; InBufDataPtr++;		//this is "trig data", word 1
+		input_data_index++;
+		tempval[1] = *InBufDataPtr; InBufDataPtr++;		//this is "trig data", word 2
+		input_data_index++;
+		tempval[2] = *InBufDataPtr; InBufDataPtr++;		//this is "trig data", word 3
+		input_data_index++;
+		tempval[3] = *InBufDataPtr; InBufDataPtr++;		//this is "trig data", word 4
+		input_data_index++;
+
+		//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--always 0
+		//     |                  |                       +--bits 11:0 of first "trig word"
+		//     |                  +-- calculated from read of MON7_FILL_CTL register
+		//     +-- taken from daq_board structure (->base value)
+		if (TDC_DATA_SKIPPED)
+			packet_length = num_trig_words/2;	//divide by two because reg value is in 16-bit words, we're packing to 32-bit.
+		else
+			packet_length = (num_trig_words + num_tdc_words)/2;
+
+		*OutBufDataPtr  = (bd->board << 6)	//geo address  -- element ->board is actually the base address in VME A32 so is aligned to bit 21
+						+ (packet_length << 16)
+						+ ((tempval[0] & 0x0FFF) << 4);	//bits 11:0 of first "trig word", aligned to bit 4
+		OutBufDataPtr++;
+		//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]  <== filled from words 3,4 of input data
+		*OutBufDataPtr = (tempval[2] << 16) + tempval[3];
+		OutBufDataPtr++;
+		//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--from word 2 of input data
+		//     |                  |                       +--by previous fiat, the value 11 decimal (0xB)
+		//     |                  +--bits 15:12 of the first "trig word"
+		//     +-- defined as 3
+		*OutBufDataPtr  = 0x0C0000		//header length of 3
+						+ ((tempval[0] & 0xF000) << 11)	//bits 15:12 of 16-bit word, shifted up to bits 25:23
+						+ 0x000B0000	//by previous fiat, the value 11 decimal (0xB)
+						+ tempval[1];
+		OutBufDataPtr++;
+
+		//========================================================================================
+		//Build the 'event payload'
+
+		// "trig words" 5&6 form the first 32-bit word of the output payload.
+		// the "tdc words" are packed into pairs to form 4 words of additional data, if TDC data is present.
+
+		//========================================================================================
+		tempval[0] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "trig data", word 5 
+		tempval[1] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "trig data", word 6 
+		*OutBufDataPtr = (tempval[0] << 16) + tempval[1]; OutBufDataPtr++;
+
+		if (!TDC_DATA_SKIPPED)
+			{
+			tempval[0] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 1 
+			tempval[1] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 2 
+			*OutBufDataPtr = (tempval[0] << 16) + tempval[1]; OutBufDataPtr++;
+			tempval[0] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 3 
+			tempval[1] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 4 
+			*OutBufDataPtr = (tempval[0] << 16) + tempval[1]; OutBufDataPtr++;
+			tempval[0] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 5 
+			tempval[1] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 6 
+			*OutBufDataPtr = (tempval[0] << 16) + tempval[1]; OutBufDataPtr++;
+			tempval[0] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 7 
+			tempval[1] = *InBufDataPtr; InBufDataPtr++; input_data_index++;		//this is "tdc data", word 8 
+			*OutBufDataPtr = (tempval[0] << 16) + tempval[1]; OutBufDataPtr++;
+			}
+		} while (input_data_index < datasize);	//loop until input buffer is fully processed
+
+	//when the transfer is complete, return the pointer to the output buffer.
+	return(0);
+}
+
+/****************************************************************************
+ *	TriggerTypeFHeader() is called whenever there is no data in a trigger
+ *	or else the run is ending.  Either way, the function grabs a buffer off of
+ *  the 'free' queue, stuffs in some data based upon the arguments provided and/or
+ *  reads of the module, and then returns with a status value from the
+ *  TransferFIFOReturnVals enum defined in DGS_DEFS.h.
+ *
+ * Arguments:
+ *		mode is 0 if this is an 'update' header, 1 if this is an 'end of run' header.
+ *		BoardNumber is the board number (packed in header data); from this we get the VME addresses of the board.
+
+****************************************************************************/
+int TriggerTypeFHeader(int mode, int BoardNumber, char *TypeOfBoard)
+{
+    struct daqBoard *bd;	//structure of board information
+
+    rawEvt *rawBuf;			//pointer to queue message buffer
+    unsigned int TS_low,TS_mid,TS_high;
+	unsigned int *OutBufDataPtr;	//for running through buf_to_process->data
+   int numRecv;			//holds length of message as received from queue
+    STATUS stat;			//status return from MsgQSend
+    
+
+    bd = &daqBoards[BoardNumber];	//board identification data structure
+    
+    /* get a raw data buffer for this board */
+    /* msgQReceive receives a message from the qFree queue; copies message to rawBuf; return value is # of bytes received, or a magic value ERROR. */
+    /* The length of the transfer is sizeof(int) as passed */
+    numRecv = msgQReceive(qFree, (char *) &rawBuf, sizeof(rawEvt*), NO_WAIT);
+
+    if (numRecv != sizeof(rawEvt*)) {	//equates roughly to "did not transfer the amount asked for"
+        fprintf(stdout, "TriggerTypeFHeader: Starved for raw buffers- throwing away data\n");
+        printf("TriggerTypeFHeader: Cant get a buffer \n");
+		return(NoBufferAvail);	//inLoop will keep pounding until one frees up.
+    }
+    //here we assume we have a buffer. else we would have returned!
+	//set owner of rawBuf to "freshly copied from message queue"
+    rawBuf->owner=OWNER_INLOOP;
+    printf("TriggerTypeFHeader: Got buffer\n" );
+    
+	//========================================================================================
+	//Build the 'event header'.
+		//To make the data palatable for the sender/receiver/event builder, the first 4
+		//words must be as follows.
+		//0	FIXED 0xAAAAAAAA																															
+		//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+		//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]																															
+		//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+
+		//The PACKET LENGTH is defined as the # of 32-bit longwords in the event, not counting
+		//the 0xAAAAAAAA word.
+
+		//The HEADER LENGTH is defined as the # of 32-bit longwords in the header, not counting
+		// the 0xAAAAAAAA word.
+	//========================================================================================
+		
+    if (mode == 0)	//mode 0: update header (digitizer was empty when polled)
+	    {
+		//0	FIXED 0xAAAAAAAA																															
+		OutBufDataPtr = rawBuf->data;  //I assume 'unsigned int' in VxWorks is a 32-bit object...
+		*OutBufDataPtr = 0xAAAAAAAA; OutBufDataPtr++;		//begininng of the digitizer header
+
+		//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--always 0x7
+		//     |                  |                       +--Fixed value of 0xAAA (means trigger, empty message)
+		//     |                  +-- Fixed value of 3 (length of this minimal header, not counting the 0xAAAAAAAA
+		//     +-- taken from daq_board structure (->base value)
+		*OutBufDataPtr  = (bd->board << 6)	//geo address  -- element ->board is actually the base address in VME A32 so is aligned to bit 21
+						+ 0x00030000		//packet length aligned to bit 16
+						+ 0x0000AAA7;
+		OutBufDataPtr++;
+
+		//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]  
+		TS_low = *(daqBoards[BoardNumber].base32 + (0x11c/4));	//read bits 15:00 of live timestamp
+		TS_mid = *(daqBoards[BoardNumber].base32 + (0x120/4));	//read bits 31:16 of live timestamp
+		TS_high = *(daqBoards[BoardNumber].base32 + (0x124/4));	//read bits 47:32 of live timestamp
+		printf("TriggerTypeFHeader: FIFO of %s module #%d is EMPTY at timestamp 0x%04X%04X%04X\n",TypeOfBoard, BoardNumber, TS_high, TS_mid, TS_low);
+		*OutBufDataPtr  = (TS_mid << 16)+ TS_low; OutBufDataPtr++;
+
+		//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--previously read
+		//     |                  |                       +--by fiat, the value 0xF
+		//     |                  +--set to the value 0, defined as "this is information"
+		//     +-- defined as 3
+		*OutBufDataPtr  = 0x0C0000		//header length of 3
+						+ 0x000F0000	//mark as informational header with header type 15 decimal (0xF)
+						+ (TS_high << 16)
+						+ TS_mid;
+		OutBufDataPtr++;
+	    // Change the state of the buffer to OWNER_Q_WRITTEN, and then enter the buffer 
+	    // into the qWritten queue.
+	    rawBuf->curptr = rawBuf->data;
+	    stat = msgQSend(qWritten, (char *) &rawBuf, sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+	    rawBuf->owner = OWNER_Q_WRITTEN;
+	    //It's possible the queue overflows at this point, so there should be a test
+		if(stat) return(QueueOverFlowError);  //QueueOverFlowError defined in the enum BufReturnVals, in DGS_DEFS.h
+	    return(Success);   //if we haven't exited yet, declare success...
+						//Success defined in the enum BufReturnVals, in DGS_DEFS.h
+	    }
+
+	else if (mode == 1)	//mode 1: issue header stating that digitizer is empty and will not have new data    
+	    {
+		//0	FIXED 0xAAAAAAAA																															
+		OutBufDataPtr = rawBuf->data;  //I assume 'unsigned int' in VxWorks is a 32-bit object...
+		*OutBufDataPtr = 0xAAAAAAAA; OutBufDataPtr++;		//begininng of the digitizer header
+
+		//1	Geo Addr(31:27)/PACKET LENGTH(26:16)/USER PACKET DATA(15:04)/CHANNEL ID(3:0)
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--always 0x7
+		//     |                  |                       +--Fixed value of 0xBBB (means trigger, end of run message)
+		//     |                  +-- Fixed value of 3 (length of this minimal header, not counting the 0xAAAAAAAA
+		//     +-- taken from daq_board structure (->base value)
+		*OutBufDataPtr  = (bd->board << 6)	//geo address  -- element ->board is actually the base address in VME A32 so is aligned to bit 21
+						+ 0x00030000		//packet length aligned to bit 16
+						+ 0x0000BBB7;
+		OutBufDataPtr++;
+
+		//2	LEADING EDGE DISCRIMINATOR TIMESTAMP[31:0]  
+		TS_low = *(daqBoards[BoardNumber].base32 + (0x11c/4));	//read bits 15:00 of live timestamp
+		TS_mid = *(daqBoards[BoardNumber].base32 + (0x120/4));	//read bits 31:16 of live timestamp
+		TS_high = *(daqBoards[BoardNumber].base32 + (0x124/4));	//read bits 47:32 of live timestamp
+		printf("TriggerTypeFHeader: FIFO of %s module #%d is EMPTY at timestamp 0x%04X%04X%04X\n",TypeOfBoard, BoardNumber, TS_high, TS_mid, TS_low);
+		*OutBufDataPtr  = (TS_mid << 16)+ TS_low; OutBufDataPtr++;
+
+		//3	HEADER LENGTH(31:26)/EVENT TYPE(25:23)/0/0/0/HEADER TYPE(19:16)/LEADING EDGE DISCRIMINATOR TIMESTAMP[47:32]
+		//     ^                  ^                       ^                  ^
+		//     |                  |                       |                  +--previously read
+		//     |                  |                       +--by fiat, the value 0xF
+		//     |                  +--set to the value 0, defined as "this is information"
+		//     +-- defined as 3
+		*OutBufDataPtr  = 0x0C0000		//header length of 3
+						+ 0x000F0000	//mark as informational header with header type 15 decimal (0xF)
+						+ TS_high;
+		OutBufDataPtr++;
+	    // Change the state of the buffer to OWNER_Q_WRITTEN, and then enter the buffer 
+	    // into the qWritten queue.
+	    rawBuf->curptr = rawBuf->data;
+	    stat = msgQSend(qWritten, (char *) &rawBuf, sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+	    rawBuf->owner = OWNER_Q_WRITTEN;
+	    //It's possible the queue overflows at this point, so there should be a test
+		if(stat) return(QueueOverFlowError);  //QueueOverFlowError defined in the enum BufReturnVals, in DGS_DEFS.h
+	    return(Success);   //if we haven't exited yet, declare success...
+						//Success defined in the enum BufReturnVals, in DGS_DEFS.h
+	    }
+	else return(IncorrectModeArg);
+}
+
+
+#endif
+
+
+
+
+/************************************************************/
+/* OLD CODE FROM BEFORE - WILL BE DELETED SOON              */ 
+/************************************************************/
+
+#if 0
+
+//=================================================================================================================
+//
+//	TRIGGER MODULE SECTION
+//
+//	Items in this area are specific to handling of the FIFO(s) of the trigger module.
+//
+//	Functions within this section:
+//
+//		void dbgEventToTrig(int i, int nevents)   -- generate some number of manual triggers
+//		void dbgReadTrigFifo(int i, int words)    -- read trigger fifo (MON7) and dump data to console
+//		int checkFIFOTrig(int i, int build)		  -- read status of trigger fifo (MON7) and return some "level of fullness"
+//
+//=================================================================================================================
+
+
+
+
+
+//This forces the trigger board, when we are reading trigger fifo, to put data into the trig board fifo
+void dbgEventToTrig(int i, int nevents);
+// for dbg reading the trig board fifo
+void dbgReadTrigFifo(int i, int words);
+
+
+
+
+
+//temp memory for storing trigger card fifo data before formatting into headers
+// this is for trigger board- we make trigger data look like dig data by adding aaaa etc...
+//static unsigned int tempfifo[32768];
+static unsigned int tempfifo[TRIG_FIFO_DEPTH];
+
+// variable that can be set from the shell or by ReadSend() to enable/disable console tracing of trigger functions
+int TrigFIFO_trace = 0;
+
+
+
+
+// Trigger module defs			//structure re-verified 20171002 JTA
+//
+//	Note: data as read from trigger module over VME is uint32_t (32-bit unsigned) as a sop to 
+//  match what the digitizer does, but in reality all data from the trigger is 16-bit unsigned
+//  and the upper 16 bits are always 0.  This is because when the software was originally written
+//  nobody wanted to handle different kinds of VME reads in different crates.
+//
+//	This structure is the structure of data in MON FIFO 7 of the trigger module; other FIFOs
+//  in the module have other data structures.  This structure is only valid if the user has left
+//  the registers controlling the MON FIFO 7 data alone and not written to them.  The firmware supports
+//  user control over the number of words saved in the "general information" section and the
+//	"TDC information" section separately.
+//
+//	These lengths are controlled by the MON7_FILL_CTL_REG (address 0x20C) that normally should have the value 0x0086
+//	(8 TDC words, 6 general words).
+struct raw_trigger_event_t {
+    uint32_t hdr;		//separator, should be 0xAAAAAAAA
+	//General information section
+    uint32_t trigtyp;	//TRIGGER_TYPE_CODE & TRIG_DIST_MASK - matches first word of trigger accept frame to digitizers
+    uint32_t ts_high;	//same as 2nd word in trigger accept frame to digitizers
+    uint32_t ts_mid;	//same as 3rd word in trigger accept frame to digitizers
+    uint32_t ts_low;	//same as 4th word in trigger accept frame to digitizers
+    uint32_t wheel;		//ENCODER_SOURCE_SELECT_REG(15 downto 12) & '0' & ENCODER_EXTRA & ENCODER_ADDRESS_FROM_AUX
+    					//                |                                    |                 +----bits from AUX I/O connector
+    					//                |                                    +----------------------extra bit from AUX I/O connector
+    					//                +-------------code indicating source of address to Trig/Sweep/Veto RAMS
+
+    uint32_t sumxy;		//GLOBAL_X_TOTAL(7 downto 0) & GLOBAL_Y_TOTAL(7 downto 0); that is, plane multiplicities at time of trigger
+    
+    // TDC information section
+    uint32_t tdctslo;	//lower 16 bits of timestamp when TDC data was captured
+    uint32_t trigacks;	//bitmap of trigger acknowleges at time of TDC capture (multiple algorithms may have fired simultaneously)
+    uint32_t offset0;	//TDC_COARSE_COUNT (raw # of clocks from trigger to hit, from phase A)
+    uint32_t offset1;	//TDC_COARSE_COUNT (raw # of clocks from trigger to hit, from phase B)
+    uint32_t offset2;	//TDC_COARSE_COUNT (raw # of clocks from trigger to hit, from phase C)
+    uint32_t offset3;	//TDC_COARSE_COUNT (raw # of clocks from trigger to hit, from phase D)
+    uint32_t vp0p1;	//TDC_VALID flags (4 bits) + TDC_POS (6 bits) for phases A and B (bit-wise, VVVVAAAAAABBBBBB)
+    uint32_t p2p3;	//TDC_POS (6 bits) for phases C and D (bit_wise, 0000CCCCCCDDDDDD)
+};
+
+
+
+	int onepacketsize, numpackets,p,d;
+		unsigned int *wrptr;
+		unsigned int *rdptr;
+		int chan;
+		unsigned int ts,ts1,ts2,ts3,ts4;
+		int dumpFIFO = 0;
+		int numRecv;
+		rawEvt *rawBuf;
+		STATUS stat;
+		unsigned int *uintBuf;
+		daqBoard *bd;
+		unsigned int newStatus;
+		int datasize;
+		int read_num_events;
+		int n;
+		int outbuf_max_events;
+	#ifdef READOUT_USE_DMA
+		int dmaStat;
+		unsigned int val;
+	#endif
+
+		int j;
+		int val;
+
+
+		if (readfifo_trace>0) printf("transferMTrigFifoData \n");
+		bd = &daqBoards[bdnum];
+		//datasize is in bytes, num of btytes to xfer from vme fifo
+		if (numwords==-1)
+			datasize=MAX_TRIG_RAW_XFER_SIZE;
+		else
+			datasize=numwords*4;
+
+		if (datasize>MAX_TRIG_RAW_XFER_SIZE) datasize=MAX_TRIG_RAW_XFER_SIZE;
+		if (readfifo_trace>1) printf("numwords %d (longs), datasize %d (bytes) datasize/4 %d (longs)\n",numwords,datasize,datasize/4);
+
+
+		// Adjust datasize so we read an integral number of events *and* the
+		// number of constructed events fits in the output buffer.
+		outbuf_max_events = RAW_BUF_SIZE/(TRIG_CONSTRUCTED_EVENT_SZ);
+		read_num_events = datasize/TRIG_RAW_EVENT_SZ;
+		if (read_num_events > outbuf_max_events) read_num_events = outbuf_max_events;
+		datasize = read_num_events*TRIG_RAW_EVENT_SZ;
+
+
+		if (readfifo_trace>1) printf("xfer size %d bytes\n", datasize);
+		/* get a raw data buffer for this board */
+		numRecv = msgQReceive(gDigRawRetQ, (char *) &rawBuf, sizeof(int), NO_WAIT);
+		if (numRecv != sizeof(int)) {
+			if (printVarLen) fprintf(stdout, "Starved for raw buffers- throwing away data\n");
+			if (readfifo_trace>1) printf("Cant get a buffer \n");
+			devGDigDiscards++;
+			rawBuf=overflow_event;
+			uintBuf = (unsigned int *) rawBuf->bptr;
+			rawBuf->board =  bd->board;
+			rawBuf->len = MAX_TRIG_RAW_XFER_SIZE / 4;
+			/* DME from dig to overflow buffer and dont Q*/
+			dig_dma_to_overflow(bd->FIFO,uintBuf);
+			return 6;
+		}
+
+		//here we assume we have a buffer. else we would have returned!
+		if (readfifo_trace>1) printf("Got buffer\n" );
+		fifoBufsCount(-1);
+		rawBuf->owner=4;	//0=undef, 1=retQ,2=rawQ, 3=getRawBuf, 4=servuceBuff,5 getFreshBufferDGS
+		// we must xfer to a temp buffer in preparation for adding a "digitizer-like" header to the trigger data.
+		uintBuf=(unsigned int *) tempfifo;
+
+		rawBuf->board =  bd->board;
+		rawBuf->len = datasize/4;
+		if (datasize>=512  &&  fifo_use_dma==1) {
+
+	#ifdef READOUT_USE_DMA
+			/*
+			 * DMA_MAX_SIZE_XFER = 256K - 4 bytes
+			 */
+
+		#ifdef MV5500
+				epicsEventWait(DMASem);
+				dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, datasize);
+				epicsEventSignal(DMASem);
+		#endif
+
+			if (dmaStat != OK) {
+				printf("DMA returned %d (xfer 1)\n", dmaStat);
+				msgQSend(gDigRawRetQ, (char *) &rawBuf,sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+				rawBuf->owner=1;	//0=undef, 1=retQ,2=rawQ, 3=getRawBuf, 4=servuceBuff,5 getFreshBufferDGS
+				fifoBufsCount(1);
+				devGDigDiscards++;
+			}
+	#else
+			// transfer with reg VME addressing, no DMA available
+			for (j = 0; j < (datasize/4); j++) {
+				val = *((unsigned int *) bd->FIFO);
+				*(uintBuf + j) = val;
+			}
+	#endif
+			if (readfifo_trace>1) printf("Did dma\n" );
+		} 
+		else {
+			// transfer with reg VME addressing, too small for DMA
+			for (j = 0; j < (datasize/4); j++) {
+				val = *((unsigned int *) bd->FIFO);
+				*(uintBuf + j) = val;
+			}
+
+			if (readfifo_trace>1) printf("Did vme xfer no DMA, j=%d (longs)\n",j );
+		}
+
+		//
+		// at this ppoint the data is transferred from fifo, and is in tempfifo.
+		// Must now add "digitizer-like" header to trigger data, and then copy into the queued buffer
+		//
+		// conert the trig fifo data into dig fifo data.
+		// one packet is one dig event.
+		// we stick ONE trig event of 4 words into ONE dig packet of 14 words.
+
+
+		if (readfifo_trace>1)
+			printf("adding dig style header to trig data\n");
+
+		//set to the queued buffer data area
+
+		uintBuf=(unsigned int *) rawBuf->bptr;
+
+
+		onepacketsize=4;//words we reaad from the trigger for one dig header     //JTA: this is wrong!
+
+
+		//of less than 4 words from trig fifo, then we make smaller packetsize
+		if (datasize/4  < onepacketsize)
+			onepacketsize=datasize/4;
+
+		wrptr=uintBuf;
+		rawBuf->len=0;
+		rdptr=tempfifo;
+
+		//num of dig headers we will generate. each dig header
+		// has ONE trig data structures. datasize/4 is the number of woreds
+		//read from the trig board. it is calculated to be small enough
+		// so we will not overrun the buffer when adding the dig header
+		//data.
+		numpackets=(datasize/4)/onepacketsize;
+		if (numpackets<1) numpackets=1;
+		if (readfifo_trace>1) printf(" format trig data to dig data. npackets %d\n", numpackets);
+
+
+
+			/* Add header per event per Anderson's email 20160509. "Binary 1011" is header type 11.
+
+			--   31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+			|                                       FIXED 0xAAAAAAAA                                            | 0
+			|   Geo Addr   | Packet length (0x0009)         |       TRIGGER TYPE CODE                           | 1
+			|                                      Event Timestamp 31:0                                         | 2
+			|HEADER_LENGTH(4) |EVT_TYPE| "000"  |binary 1011|              Event Timestamp 47:32                | 3
+			================================= end of header, begin payload ======================================
+			|   WHEEL POSITION                              |          SumX/SumY                               | 0
+			|   TDC TS OFFSET                               |          TRIG ACK FLAGS                          | 1
+			|   PHASE OFFSET 0                              |          PHASE OFFSET 1                          | 2
+			|   PHASE OFFSET 2                              |          PHASE OFFSET 3                          | 3
+			|   VALID/VERNIER POSITION 0/VERNIER POSITION 1 |     VERNIER POSITION 2/VERNIER POSITION 3        | 4
+			================================ end of payload, end of event ======================================
+			*/
+		for (n = 0; n < read_num_events; ++n) {
+			// TODO Use raw_trigger_event_t instead if struct is packed under
+			// vxworks.
+			*wrptr++ = 0xaaaaaaaa;
+			*wrptr++ = (bdnum<<27) | TRIG_CONSTRUCTED_EVENT_NWDS<<16 |
+					   (*(rdptr+1)) & 0xffff;
+			*wrptr++ = (*(rdptr+3))<<16 | (*(rdptr+4)) & 0xffff;
+			*wrptr++ = 0x100b0000 | (*(rdptr+2)) & 0xffff;
+			*wrptr++ = (*(rdptr+5))<<16 | (*(rdptr+6)) & 0xffff;
+			*wrptr++ = (*(rdptr+7))<<16 | (*(rdptr+8)) & 0xffff;
+			*wrptr++ = (*(rdptr+9))<<16 | (*(rdptr+10)) & 0xffff;
+			*wrptr++ = (*(rdptr+11))<<16 | (*(rdptr+12)) & 0xffff;
+			*wrptr++ = (*(rdptr+13))<<16 | (*(rdptr+14)) & 0xffff;
+			rdptr += TRIG_RAW_EVENT_SZ/sizeof(int);
+		}
+		rawBuf->len=wrptr-uintBuf;
+
+		if (readfifo_trace>1) printf("rawbif->len %d longs\n",rawBuf->len);
+
+		//
+		// end trig data formatting.
+		//
+
+
+
+		//
+		// print data to screen.
+		//
+		if (dumpFIFOReq) {
+			dumpFIFO = dumpFIFOReq;
+			dumpFIFOReq = 0;
+		}
+
+
+		j = 0;
+		while (dumpFIFO > 0 && j <  (datasize/4)  ) {
+			printf("0x%08x", *(uintBuf + j));
+			j++;
+			dumpFIFO--;
+			if ((j % 4) == 0 || dumpFIFO == 0)
+				printf("\n");
+			else
+				printf("\t");
+		}
+
+		//
+		// send buffer to sender queue
+		//
+
+		if (readfifo_trace>1) printf("putting buffer to full queue for sorter\n");
+
+		/* if we have a rawBuf, there must be room in rawQ */
+		bytesRead += datasize;
+		rawBuf->curptr = rawBuf->bptr;
+
+		// for debugging and just keeping track
+		fifo_words_sent[bdnum]+=datasize/4;
+		stat = msgQSend(gDigRawQ, (char *) &rawBuf, sizeof(rawEvt *), NO_WAIT, MSG_PRI_NORMAL);
+		rawBuf->owner=2;	//0=undef, 1=retQ,2=rawQ, 3=getRawBuf, 4=servuceBuff,5 getFreshBufferDGS
+
+		if (stat == ERROR) {
+			printf("msgQSend failed in inLoop for rawQ\n");
+			return 4;
+		}
+
+
+		return(0);
+
+	}
+
+
+
+
+
+
+
+
+
+	/***************************************************************************************/
+	//
+	//	dbgEventToTrig is a software method to generate 'n' manual triggers to the trigger
+	//  master, presumably to generate some number of events.  Not particularly useful in 
+	//  terms of triggers to the digitizer modules, but could be useful for exercising
+	//  the trigger FIFO.
+	//
+	/***************************************************************************************/
+	void dbgEventToTrig(int i, int nevents)
+	{
+		daqBoard *bd;
+		int k,w,aa;
+		int *addr;
+
+		//wait time between trig events
+		int const dbgEvtWait=10000;
+
+		vmeMutexLock(fifo_mutex_id);
+		bd = &daqBoards[i];
+
+		//enable manual triggers in trig mask
+		addr = (int*)(bd->base32 + 0x850/4);
+		*addr = *addr | 0x1;   //read-modify-write.  Presumably this works with a VME mapped address..
+
+		addr=(int*)(bd->base32 + 0x8e0/4);  // this is setting addr to point to PULSED_CTRL_1
+
+		for (k=0; k<nevents; k++) 
+			{
+			if (k%50 == 0) printf("Event %d\n",k);
+			*addr=0x8000;		//setting bit 15 of PULSED_CTL_1 causes a manual trigger
+			//wait awhile
+			for (w=0; w<dbgEvtWait; w++) aa=1;  //apparently the assignment is required to keep the compiler from optimizing this away?
+			}
+
+		vmeMutexUnLock(fifo_mutex_id);
+	}
+
+
+	/***********************************************************************************/
+	//
+	//  dbgReadTrigFifo() reads 'n' words from the fifo at address 0x178 and dumps data
+	//  to the console.  Address 0x178 is Monitor Fifo 7, the FIFO that has the trigger's
+	//  overall status (trigger timestamps and TDC) information.
+	//
+	/***********************************************************************************/
+
+	void dbgReadTrigFifo(int i, int words)
+	{
+		int k;
+		int *addr;
+		daqBoard *bd;
+		int data;
+		int nprints=100;
+
+		bd = &daqBoards[i];
+		vmeMutexLock(fifo_mutex_id);
+		addr = (int*)(bd->base32 + 0x178/4);
+
+		for (k=0; k<words; k++) 
+			{
+			data = *addr;		//read word
+			if (words<=nprints) printf("0x%x\n",data);		//prints out only first 100 words read
+			else if (k%nprints==0) printf("0x%x\n",data);   //then prints out every 100th word thereafter
+			}
+
+		vmeMutexUnLock(fifo_mutex_id);
+	}
+
+	/****************************************************************************
+	 *	checkFIFOTrig() reads the status of fifo MON7 of a trigger module and
+	 *  returns a numeric code indicative of how full the FIFO is.
+	 *
+	 *  The numeric code is a bitmask:
+
+			Bit     meaning
+			7       fifo underflow     (more data was read than available)
+			6       fifo overflow
+			5       fifo full
+			4       fifo almost-full
+			3       fifo prog-full    (this bit will set when the FIFO is half full - 32768 words available)
+			2       fifo prog-empty   (this bit will set if there is less than 16384 words available to read)
+			1       fifo almost empty
+			0       fifo empty
+	 *
+	 *
+	 *		The exact number of words available is returned through the pointer *actual_depth.
+	 *	
+	 ****************************************************************************/
+	int checkFIFOTrig(int *actual_depth)
+	{
+		volatile unsigned int Trig_MON7_status;
+		volatile int fifo_depth = 0;
+
+		daqBoard *bd;
+
+		if (TrigFIFO_trace>0) printf("checkFIFOTrig\n");
+		bd = &daqBoards[i];
+		//
+		//fifo offset address is 1B4, and we have to convert byte addr to long addr, hence/4
+		//similarly, address 0x154 reads back how many words are in the fifo.
+		//
+		vmeMutexLock(fifo_mutex_id);
+		Trig_MON7_status = *(bd->base32 + 0x1b4/4);	//do the read
+		fifo_depth = *(bd->base32 + 0x154/4);		//do the read
+		vmeMutexUnLock(fifo_mutex_id);
+
+		if (TrigFIFO_trace>1) {
+			printf("checkFIFOTrig: underflow %d, overflow %d, full %d, almost-full %d, prog-full %d, prog-empty %d, almost empty %d, empty %d\n"
+				   (Trig_MON7_status & 0x80) >> 7,
+				   (Trig_MON7_status & 0x40) >> 6,
+				   (Trig_MON7_status & 0x20) >> 5,
+				   (Trig_MON7_status & 0x10) >> 4,
+				   (Trig_MON7_status & 0x08) >> 3,
+				   (Trig_MON7_status & 0x04) >> 2,
+				   (Trig_MON7_status & 0x02) >> 1,
+				   (Trig_MON7_status & 0x01) >> 0);
+
+			printf("checkFIFOTrig: depth %d  0x%x\n",fifo_depth, fifo_depth);
+		}
+
+		 *actual_depth = fifo_depth;
+		 return Trig_MON7_status;
+	}
+
+	/****************************************************************************
+	 *   drainFIFOTrig() is not a reset of the FIFO to empty it, but just sucks
+	 *   data until the FIFO is empty. 
+	 *
+	 ****************************************************************************/
+	int drainFIFOTrig(int bdnum)
+	{
+		rawEvt *rawBuf;
+		unsigned int tmp;		//placeholder for word read
+		int tmpCount;			//running count of number of words available
+		int resetCnt;			//for loop index for draining loop
+		int trig_FIFO_stat, trig_FIFO_numwords;	
+		int total_drain_count = 0;
+		daqBoard *bd;
+
+		if (TrigFIFO_trace>1) printf("drainFIFOTrig No: %d\n",bdnum);
+
+		bd = &daqBoards[bdnum];	//bdnum is expected to be the index number of a trigger board, not a digitizer
+		/* clear message queues */
+		while (msgQReceive(gDigRawQ, (char *) &rawBuf, sizeof(rawEvt *),NO_WAIT) != ERROR) {
+			fifoBufsCount(1);
+			stat = msgQSend(gDigRawRetQ, (char *) &rawBuf, sizeof(rawEvt *),NO_WAIT, MSG_PRI_NORMAL);
+			rawBuf->owner=1;	//0=undef, 1=retQ,2=rawQ, 3=getRawBuf, 4=servuceBuff,5 getFreshBufferDGS
+		}
+
+		/* Begin draining loop */
+		vmeMutexLock(fifo_mutex_id);
+		trig_FIFO_stat = checkFIFOTrig(&trig_FIFO_numwords);  //ask trigger board how many words are available
+		total_drain_count = 0;
+		if (TrigFIFO_trace>1) printf("fifo 0x%lx states %d words available\n", (unsigned long)bd->base32), trig_FIFO_numwords);
+		
+		for(resetCnt = 0; resetCnt < trig_FIFO_numwords; resetCnt++) 
+			{
+			tmp = *(bd->base32 + 0x0178/4);		//Read one word from MON7 fifo of trigger
+			trig_FIFO_stat = checkFIFOTrig(&tmpCount);
+			total_drain_count++;
+			if (trig_FIFO_stat < 0) 		//if FIFO status reads back underflow (-1), exit early
+				{
+				if (TrigFIFO_trace>1) printf("Underflow error! \n");
+				return (trig_FIFO_stat);
+				}
+			}
+
+		//upon breaking from loop, if trig_FIFO_stat is 0, all good.
+		//trig_FIFO_stat < 0, shouldn't be possible.
+		//trig_FIFO_stat > 0, words are still left - possibly new data came in while in drain loop. 
+		
+		if (trig_FIFO_stat > 0)
+			{
+			if (TrigFIFO_trace>1) printf("FIFO not empty after presribed number of words read; %d words left\n", tmpCount);
+			while (trig_FIFO_stat > 0)
+				{
+				tmp = *(bd->base32 + 0x0178/4);		//Read one word from MON7 fifo of trigger
+				trig_FIFO_stat = checkFIFOTrig(&tmpCount);
+				total_drain_count++;
+				if (TrigFIFO_trace>1) printf("continuing draining... %d words left\n", tmpCount);
+				}
+		vmeMutexUnLock(fifo_mutex_id);
+		if (TrigFIFO_trace>1) printf("cleared %d words from fifo 0x%lx", total_drain_count,(unsigned long)bd->base32);
+
+		return 0;
+	}
+
+	/****************************************************************************
+	 *	serviceOneBufferTrig() simply asks the trigger how much data it has available
+	 *  and then calls transferMTrigFifoData() to move it into a queue buffer.  There's a 
+	 *  max transfer size limit that is enforced.
+	 *
+	 ****************************************************************************/
+	#define rightColA(a) ((unsigned short *)(a))
+	#define leftColA(a) (((unsigned short *)(a))+1)
+
+	int serviceOneBufferTrig(int bdnum, int FIFOState)
+	{
+		daqBoard *bd;
+		int trig_FIFO_stat, trig_FIFO_numwords;
+
+		int dumpFIFO = 0;
+		int numRecv;
+		rawEvt *rawBuf;
+		STATUS stat;
+		unsigned int *uintBuf;
+		int onepacketsize;
+		unsigned int *wrptr;
+		unsigned int* rdptr;
+		int numpackets;
+		int p,d;
+		int j;
+		int chan;
+		unsigned int val;
+		unsigned int ts,ts2,ts3,ts4;
+		int xstat;
+
+	//transfer size in bytes
+		int xfersize=32768*4;
+		chan=0;
+
+	#ifdef READOUT_USE_DMA
+		int dmaStat;
+	#endif
+	// we never use dma when using the trig board
+		fifo_use_dma=0;
+
+		if (TrigFIFO_trace>1) printf("serviceOneBufferTrig \n");
+		bd = &daqBoards[bdnum];
+		trig_FIFO_stat = checkFIFOTrig(&trig_FIFO_numwords);  //ask trigger board how many words are available
+
+		switch (newStatus) {
+
+
+		case forceread:
+
+			//-1 mean max buffer size
+			// make sure we don't overflow the buffer. also leave off 512 to make room for
+			// added dig style heaader data.
+			if (num_fifo_words[bdnum] < ((MAX_TRIG_RAW_XFER_SIZE/4)))
+				xstat = transferMTrigFifoData( bdnum, num_fifo_words[bdnum],1);
+
+			else
+				xstat = transferMTrigFifoData( bdnum,(MAX_TRIG_RAW_XFER_SIZE/4),1);
+
+
+			if (xstat>0)
+				return(xstat);
+
+
+			break;
+
+		case halfFull:
+
+			//-1 mean max buffer size
+			//
+			xstat = transferMTrigFifoData( bdnum, (MAX_TRIG_RAW_XFER_SIZE/4),1);
+
+			if (xstat>0)
+				return(xstat);
+
+
+			break;
+
+
+		case empty:
+
+		default:
+		}
+		return 0;
+	}
+
+
+
+	//=================================================================================================================
+	//	*********** END OF TRIGGER MODULE SECTION **********
+	//=================================================================================================================
+#endif

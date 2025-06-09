@@ -1,0 +1,12 @@
+*~
+\#*\#
+*.swp
+*.d
+*.o
+*.a
+*.munch
+
+#ignore folders
+deprecated
+srcback
+O.*
