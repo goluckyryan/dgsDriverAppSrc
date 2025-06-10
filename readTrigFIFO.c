@@ -34,7 +34,6 @@
 #include <epicsMutex.h>
 #include <epicsEvent.h>
 #include "DGS_DEFS.h"
-#include "vmeDriverMutex.h"
 
 #include "readTrigFIFO.h"
 #include "devGVME.h"
@@ -111,7 +110,7 @@ int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsa
 	unsigned int remain_data_in_bytes = 0;
 
 	volatile unsigned int *Read_address;	//the address from which data will be pulled  - must be volatile to ensure VME occurs when accessed
-	extern epicsMutexId readout_driver_mutex;
+
 
 	bd = &daqBoards[bdnum];
     start_profile_counter(PROF_IL_XFER_TRIG_FIFO_DATA);
@@ -235,10 +234,9 @@ int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsa
 		remain_data_in_bytes = remain_data_in_bytes - request_data_in_bytes;
 		if(inloop_debug_level >= 1) printf("datasize : %d| request %d , remain %d\n",datasize, request_data_in_bytes, remain_data_in_bytes);
 		//actual DMA transfer.
-		//JTA: 20250607: added EPICS mutex around actual DMA to avoid any hitches in readout.
-		epicsMutexLock(readout_driver_mutex);
+
 		dmaStat = sysVmeDmaV2LCopy((unsigned char *)Read_address,(unsigned char *)uintBuf, request_data_in_bytes);
-		epicsMutexUnlock(readout_driver_mutex);
+
 			//The possible returns here are
 			//  OK
 			//	ERROR (driver not initialized, or invalid argument)

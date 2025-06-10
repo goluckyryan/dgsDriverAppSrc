@@ -71,35 +71,3 @@ void vmeMutexUnLock(int caller_id)
 	if (disable_mutex_id!=caller_id) epicsMutexUnlock(vme_driver_mutex);
 }
 
-
-
-/*
-*
-* this code is for a mutex shared across the digitizer and trigger readouts
-* it allows locking the vme transactions so we can suck data
-* w/out any EPICS-related vme stuff going on. 
-*/
-volatile int is_readout_mutex_exist=0;
-epicsMutexId readout_driver_mutex;
-int disable_mutex_id2=1000001;
-
-void initReadoutDrvMutex(void)
-{
-//this needs to be NON reentrant. 
-	if (is_readout_mutex_exist==0) readout_driver_mutex=epicsMutexCreate();
-	is_readout_mutex_exist=1;
-}
-
-//give caller id so we can disable mutex lock for debugging for some funtcions
-void readoutMutexLock(int caller_id)
-{
-  if (disable_mutex_id2!=caller_id) epicsMutexLock(readout_driver_mutex);
-}
-
-
-void readoutMutexUnLock(int caller_id)
-{ 
-	if (disable_mutex_id2!=caller_id) epicsMutexUnlock(readout_driver_mutex);
-}
-
-

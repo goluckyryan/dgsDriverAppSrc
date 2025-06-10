@@ -76,6 +76,8 @@ void InitializeDaqBoardStructure(void)
 {
 int JTA_cardno = 0;
 int JTA_regno = 0;
+
+
 // JTA: 20200616: there needs to be a for-sure intialization of daqBoards here, 'cause there is no
 // compile-time initialization of the daqBoards[] structure.
 

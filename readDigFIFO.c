@@ -21,37 +21,32 @@
 //
 /***************************************************************************************************/
 
-#ifdef linux
-	#include "readFIFO_linux.c"
-#else
-	#include <vxWorks.h>
-	#include <stdio.h>
-	#include <assert.h>
-	#include <taskLib.h>
-	#include <tickLib.h>
-	#include <sysLib.h>
-	#include <logLib.h>
-	#include <freeList.h>
+#include <vxWorks.h>
+#include <stdio.h>
+#include <assert.h>
+#include <taskLib.h>
+#include <tickLib.h>
+#include <sysLib.h>
+#include <logLib.h>
+#include <freeList.h>
 
-	#include <epicsMutex.h>
-	#include <epicsEvent.h>
-	#include "DGS_DEFS.h"
-	#include "vmeDriverMutex.h"
+#include <epicsMutex.h>
+#include <epicsEvent.h>
+#include "DGS_DEFS.h"
 
-	#include "readDigFIFO.h"
-	#include "devGVME.h"
 
-	#include "QueueManagement.h"
-	#include "profile.h"
+#include "readTrigFIFO.h"
+#include "devGVME.h"
 
-	#ifdef READOUT_USE_DMA
-		#include <cacheLib.h>
-	#endif
+#include "QueueManagement.h"
+#include "profile.h"
 
-	#ifdef MV5500
-		epicsEventId DMASem;
-	#endif
+#ifdef READOUT_USE_DMA
+	#include <cacheLib.h>
+#endif
 
+#ifdef MV5500
+	epicsEventId DMASem;
 #endif
 
 extern int FBufferCount;		//defined in inLoopSupport.c
@@ -92,7 +87,7 @@ int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *
 	unsigned int remain_data_in_bytes = 0;
 
 	volatile unsigned int *Read_address;	//the address from which data will be pulled  - must be volatile to ensure VME occurs when accessed
-	extern epicsMutexId readout_driver_mutex;
+
 
 	bd = &daqBoards[bdnum];
     start_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
@@ -201,10 +196,9 @@ int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *
 		remain_data_in_bytes = remain_data_in_bytes - request_data_in_bytes;
 		if(inloop_debug_level >= 1) printf("datasize : %d| request %d , remain %d\n",datasize, request_data_in_bytes, remain_data_in_bytes);
 		//actual DMA transfer.
-		//JTA: 20250607: added EPICS mutex around actual DMA to avoid any hitches in readout.
-		epicsMutexLock(readout_driver_mutex);
+
 		dmaStat = sysVmeDmaV2LCopy((unsigned char *)Read_address,(unsigned char *)uintBuf, request_data_in_bytes);
-		epicsMutexUnlock(readout_driver_mutex);
+
 			//The possible returns here are
 			//  OK
 			//	ERROR (driver not initialized, or invalid argument)
