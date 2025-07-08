@@ -59,6 +59,27 @@ FILE *MS_FILE = NULL;
 
 int FBufferCount;
 
+// Digitizer fixed addresses we use
+// should come from the spreadsheet
+int DIG_MSTR_LOGIC_REG = (0x500/4);		//address offset of Master Logic Status register
+int DIG_PROGRAMMING_DONE_REG = (0x004/4);	//address offset of ProgrammingDone (FIFO depth/status) register
+int DIG_RAW_DATA_WINDOW_REG[10] = {(0x140/4), (0x144/4), (0x148/4), (0x14C/4), (0x150/4), (0x154/4), (0x158/4), (0x15C/4), (0x160/4), (0x164/4)};
+int DIG_PULSED_CTRL_REG = (0x40C/4);	//address offset of digitizer pulsed control register
+int DIG_USR_PKG_DATA_REG = (0x024/4);
+int DIG_FIFO = (0x1000/4);
+
+//master trigger fixed addresses we use
+//This really should come from the spreadsheet via a #included c source file
+int MTRG_MON_FIFO_STATE_REG = (0x1B4/4);	//address offset of MON7_FIFO_STATE register (master trigger)
+int MTRG_CHAN_FIFO_STATE_REG = (0x01A4/4);		//address offset of trigger's CHAN_FIFO_STATE register
+int MTRG_FIFO_RESET_REG = (0x8F0/4);	//address offset of trigger pulsed control register used for FIFO resets
+int MTRG_USR_PKG_DATA_REG = (0x214/4);
+int MTRG_FIFO = (0x5000/4);
+int MTRG_MON7_LATCHED_DEPTH = (0x01AC/4);		//this is the at-event-boundaries latched counter
+int MTRG_MON7_LIVE_DEPTH = (0x0154/4);		//this is the LIVE depth counter
+int MTRG_TRIG_MASK_REG = (0x0850/4);		//address offset of trigger's TRIG_MASK register
+int RTRG_FIFO_RESET_REG = (0x8F0/4);	//address offset of trigger pulsed control register used for FIFO resets
+
 //==============================================================================
 //	SetupBoardAddresses() initializes a set of arrays that hold addresses of 
 //	interest for control of digitizers and triggers.
@@ -69,7 +90,7 @@ extern int SetupBoardAddresses(int CRATENUM, int MaxBoardNum, int B0_SW_en, int 
 {
 int BoardNumber;
 int NumBoardsEnabled = 0;
-int *TempRegPtr;
+
 
 #ifdef SM_PRINT_TO_FILE
 	if (IL_FILE == NULL)
@@ -119,25 +140,24 @@ int *TempRegPtr;
 				{
 				case BrdType_ANL_MDIG:	//	"ANL Master Digitizer",		//0xC : 12
 				case BrdType_ANL_SDIG:	//	"ANL Slave Digitizer",		//0xD : 13
-					MstrLogicReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x500/4));		//address offset of Master Logic Status register
-					FIFOStatusReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x004/4));	//address offset of ProgrammingDone (FIFO depth/status) register
+					MstrLogicReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + DIG_MSTR_LOGIC_REG);		//address offset of Master Logic Status register
+					FIFOStatusReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + DIG_PROGRAMMING_DONE_REG);	//address offset of ProgrammingDone (FIFO depth/status) register
 
-					RawDataLengthReg[BoardNumber][0] = (int *)(daqBoards[BoardNumber].base32 + (0x140/4));	//address offset of digitizer raw data window register, channel 0.
-					RawDataLengthReg[BoardNumber][1] = (int *)(daqBoards[BoardNumber].base32 + (0x144/4));	//address offset of digitizer raw data window register, channel 1.
-					RawDataLengthReg[BoardNumber][2] = (int *)(daqBoards[BoardNumber].base32 + (0x148/4));	//address offset of digitizer raw data window register, channel 2.
-					RawDataLengthReg[BoardNumber][3] = (int *)(daqBoards[BoardNumber].base32 + (0x14C/4));	//address offset of digitizer raw data window register, channel 3.
-					RawDataLengthReg[BoardNumber][4] = (int *)(daqBoards[BoardNumber].base32 + (0x150/4));	//address offset of digitizer raw data window register, channel 4.
-					RawDataLengthReg[BoardNumber][5] = (int *)(daqBoards[BoardNumber].base32 + (0x154/4));	//address offset of digitizer raw data window register, channel 5.
-					RawDataLengthReg[BoardNumber][6] = (int *)(daqBoards[BoardNumber].base32 + (0x158/4));	//address offset of digitizer raw data window register, channel 6.
-					RawDataLengthReg[BoardNumber][7] = (int *)(daqBoards[BoardNumber].base32 + (0x15C/4));	//address offset of digitizer raw data window register, channel 7.
-					RawDataLengthReg[BoardNumber][8] = (int *)(daqBoards[BoardNumber].base32 + (0x160/4));	//address offset of digitizer raw data window register, channel 8.
-					RawDataLengthReg[BoardNumber][9] = (int *)(daqBoards[BoardNumber].base32 + (0x164/4));	//address offset of digitizer raw data window register, channel 9.
+					RawDataLengthReg[BoardNumber][0] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[0]);	//address offset of digitizer raw data window register, channel 0.
+					RawDataLengthReg[BoardNumber][1] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[1]);	//channel 1.
+					RawDataLengthReg[BoardNumber][2] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[2]);	//channel 2.
+					RawDataLengthReg[BoardNumber][3] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[3]);	//channel 3.
+					RawDataLengthReg[BoardNumber][4] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[4]);	//channel 4.
+					RawDataLengthReg[BoardNumber][5] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[5]);	//channel 5.
+					RawDataLengthReg[BoardNumber][6] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[6]);	//channel 6.
+					RawDataLengthReg[BoardNumber][7] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[7]);	//channel 7.
+					RawDataLengthReg[BoardNumber][8] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[8]);	//channel 8.
+					RawDataLengthReg[BoardNumber][9] = (int *)(daqBoards[BoardNumber].base32 + DIG_RAW_DATA_WINDOW_REG[9]);	//channel 9.
 
-					PulsedControlReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x40C/4));	//address offset of digitizer pulsed control register
-					TempRegPtr = (int *) (daqBoards[BoardNumber].base32 + (0x024/4));
+					PulsedControlReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + DIG_PULSED_CTRL_REG);
 					//Digitizer FIFOs start at address 0x1000
-					daqBoards[BoardNumber].FIFO = (int *) (daqBoards[BoardNumber].base32 + (0x1000/4));
-					daqBoards[BoardNumber].DigUsrPkgData = *TempRegPtr;	//read the User Package Data register from the module, for later use.
+					daqBoards[BoardNumber].FIFO = (int *) (daqBoards[BoardNumber].base32 + DIG_FIFO);
+					daqBoards[BoardNumber].DigUsrPkgData = *( (int *)(daqBoards[BoardNumber].base32 + DIG_USR_PKG_DATA_REG) );
 					DigitizerFull[BoardNumber] = 0;		//initialize all full flags to "not full"
 					DigitizerEmpty[BoardNumber] = 1;		//initialize all empty flags to "empty"
 					//turn off MasterLogicEnable, clear the FIFO.
@@ -146,7 +166,7 @@ int *TempRegPtr;
 					break;
 				case BrdType_DGS_MTRIG:		//	"DGS Master Trigger",		//4	
 					MstrLogicReg[BoardNumber] = NULL;	//there is no MasterLogicRegister in a trigger module
-					FIFOStatusReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x1B4/4));	//address offset of MON7_FIFO_STATE register (master trigger)
+					FIFOStatusReg[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON_FIFO_STATE_REG);
 					RawDataLengthReg[BoardNumber][0] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][1] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][2] = NULL;	//there is no Raw Data Window register in a trigger module
@@ -157,11 +177,10 @@ int *TempRegPtr;
 					RawDataLengthReg[BoardNumber][7] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][8] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][9] = NULL;	//there is no Raw Data Window register in a trigger module
-					FIFO_RESET_REG[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x8F0/4));	//address offset of trigger pulsed control register used for FIFO resets
-					TempRegPtr = (int *) (daqBoards[BoardNumber].base32 + (0x214/4));
+					FIFO_RESET_REG[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + MTRG_FIFO_RESET_REG);
 					//Trigger MON7 FIFOs start at address 0x5000
-					daqBoards[BoardNumber].FIFO = (int *) (daqBoards[BoardNumber].base32 + (0x5000/4));
-					daqBoards[BoardNumber].TrigUsrPkgData = *TempRegPtr;	//read the User Package Data register from the module, for later use.
+					daqBoards[BoardNumber].FIFO = (int *) (daqBoards[BoardNumber].base32 + MTRG_FIFO);
+					daqBoards[BoardNumber].TrigUsrPkgData = *( (int *)(daqBoards[BoardNumber].base32 + MTRG_USR_PKG_DATA_REG ) );
 					DigitizerFull[BoardNumber] = 0;		//initialize all full flags to "not full"
 					DigitizerEmpty[BoardNumber] = 1;		//initialize all empty flags to "empty"
 					//turn on Software Veto, clear the FIFO.
@@ -181,9 +200,8 @@ int *TempRegPtr;
 					RawDataLengthReg[BoardNumber][7] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][8] = NULL;	//there is no Raw Data Window register in a trigger module
 					RawDataLengthReg[BoardNumber][9] = NULL;	//there is no Raw Data Window register in a trigger module
-					FIFO_RESET_REG[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + (0x8F0/4));	//address offset of trigger pulsed control register used for FIFO resets
+					FIFO_RESET_REG[BoardNumber] = (int *)(daqBoards[BoardNumber].base32 + RTRG_FIFO_RESET_REG);
 					//as of 20220713, a Router doesn't have a User Package Data register.
-//					TempRegPtr = (int *) (daqBoards[BoardNumber].base32 + (0x214/4));
 					daqBoards[BoardNumber].TrigUsrPkgData = 0;
 					DigitizerFull[BoardNumber] = 0;		//initialize all full flags to "not full"
 					DigitizerEmpty[BoardNumber] = 1;		//initialize all empty flags to "empty"
@@ -202,7 +220,6 @@ int *TempRegPtr;
 					RawDataLengthReg[BoardNumber][8] = NULL;	//NULL means "do not use"
 					RawDataLengthReg[BoardNumber][9] = NULL;	//NULL means "do not use"
 					PulsedControlReg[BoardNumber] = NULL;	//NULL means "do not use"
-					TempRegPtr = NULL;	//NULL means "do not use"
 					daqBoards[BoardNumber].TrigUsrPkgData = 0;
 					DigitizerFull[BoardNumber] = 0;		//initialize all full flags to "not full"
 					DigitizerEmpty[BoardNumber] = 1;		//initialize all empty flags to "empty"
@@ -604,9 +621,9 @@ int MON_FIFO_STAT, CHAN_FIFO_STAT;
 
 	if(inloop_debug_level >= 2) printf("inLoop: ClearTrigFIFO: Reset FIFO %d of %s module #%d\n",FIFO_index,BoardTypeNames[daqBoards[BoardNumber].board_type], BoardNumber);
 	//read full/empty status of FIFOs
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x01A0/4));		//address offset of trigger's MON_FIFO_STATE register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON_FIFO_STATE_REG);
 	MON_FIFO_STAT = *p;
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x01A4/4));		//address offset of trigger's CHAN_FIFO_STATE register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_CHAN_FIFO_STATE_REG);
 	CHAN_FIFO_STAT = *p;
 	if(inloop_debug_level >= 2) printf("inLoop: ClearTrigFIFO: before clear Mon FIFO stat %04X  Chan FIFO stat %04X\n",MON_FIFO_STAT, CHAN_FIFO_STAT);
 
@@ -615,9 +632,9 @@ int MON_FIFO_STAT, CHAN_FIFO_STAT;
 	*FIFO_RESET_REG[BoardNumber] = (0);	//and then clear the bit to release the reset
 
 	//read full/empty status of FIFOs
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x01A0/4));		//address offset of trigger's MON_FIFO_STATE register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON_FIFO_STATE_REG);
 	MON_FIFO_STAT = *p;
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x01A4/4));		//address offset of trigger's CHAN_FIFO_STATE register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_CHAN_FIFO_STATE_REG);
 	CHAN_FIFO_STAT = *p;
 	if(inloop_debug_level >= 2) printf("inLoop: ClearTrigFIFO: after clear Mon FIFO stat %04X  Chan FIFO stat %04X\n",MON_FIFO_STAT, CHAN_FIFO_STAT);
 	
@@ -707,9 +724,9 @@ long NumBytesToRead = 0;
 
 	start_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
 	if(FifoNum < 8)	//monitor fifo
-		ptr = (int *)(daqBoards[BoardNumber].base32 + (0x01A0/4));
+		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON_FIFO_STATE_REG);
 	else
-	  ptr = (int *)(daqBoards[BoardNumber].base32 + (0x01A4/4));
+	  ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_CHAN_FIFO_STATE_REG);
 
 	tempval = *ptr;	//read full/empty status
 	//now strip out bits of interest
@@ -760,10 +777,10 @@ long NumBytesToRead = 0;
 	//=======================================
 	if(FifoNum == 6)
 		{
-//		ptr = (int *)(daqBoards[BoardNumber].base32 + (0x0154/4));		//this is the LIVE counter
-		ptr = (int *)(daqBoards[BoardNumber].base32 + (0x01AC/4));		//this is the at-event-boundaries latched counter
+		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LATCHED_DEPTH);		//this is the at-event-boundaries latched counter
 		NumBytesToRead = *ptr;	//value as returned from trigger is number of VME reads you should do
-                NumBytesLive = (*(int *)(daqBoards[BoardNumber].base32 + (0x0154/4))) * 4; //20250602, Ryan
+		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LIVE_DEPTH);		//this is the at-event-boundaries latched counter
+        NumBytesLive = *ptr;
 		}
 	else
 		{
@@ -771,6 +788,7 @@ long NumBytesToRead = 0;
 		}
 
 	  NumBytesToRead = NumBytesToRead  * 4;	//convert VME reads to BYTES
+	  NumBytesLive = NumBytesLive  * 4;	//convert VME reads to BYTES
 
 
 	//=======================================
@@ -779,6 +797,7 @@ long NumBytesToRead = 0;
 	  if(inloop_debug_level >= 2) printf("inLoop: FIFO %d of module #%d: read depth (numBytesToRead) %ld Bytes, live depth %ld Bytes\n",FifoNum, BoardNumber, NumBytesToRead, NumBytesLive);
 		do
 			{
+//                           int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsageFlag, long *NumBytesTransferred)
 			TransferFifoStatus = transferTrigFifoData(BoardNumber, NumBytesToRead/4, FifoNum, globQueueUsageFlag, &NumBytesTransferred); // Ryan 20250429, 1 word = 4 Bytes
 			} while (TransferFifoStatus == NoBufferAvail);   //keep trying until a buffer is used
 
@@ -813,7 +832,7 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 	if(inloop_debug_level >= 2) printf("inLoopSupport: SendEndOfRun\n");
 
 	tempval = *FIFOStatusReg[BoardNumber];	//read from 'programming done'
-	if(inloop_debug_level >= 2) printf("SendEndOfRun: after drain Programming Done = %08X\n",tempval);
+	if(inloop_debug_level >= 2) printf("SendEndOfRun: after drain FIFO status = %08X\n",tempval);
 	TransferFifoStatus = DigitizerTypeFHeader(1, BoardNumber, globQueueUsageFlag);		//send 'end of run' header.
 }
 
@@ -884,11 +903,14 @@ extern void CloseDumpFiles(void)
 //==============================================================================
 extern void SetTrigSoftwareVeto(int BoardNumber)
 {
-int *p;
-unsigned int Trig_mask_val;
+int tempaddr;
+int *p = NULL;
+unsigned int Trig_mask_val = 0;
 
 	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto (Veto = ON)\n");
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x0850/4));		//address offset of trigger's TRIG_MASK register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
+	tempaddr = (int)p;
+	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
 	Trig_mask_val = *p;		//read the register
 	Trig_mask_val |= 0x0800;	//force bit 11 to be set
 	*p = Trig_mask_val;		//write modified value back
@@ -900,12 +922,14 @@ unsigned int Trig_mask_val;
 //==============================================================================
 extern void ClearTrigSoftwareVeto(int BoardNumber)
 {
-int *p;
-unsigned int Trig_mask_val;
+int tempaddr;
+int *p = NULL;
+unsigned int Trig_mask_val = 0;
 
 	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto\n");
-	p = (int *)(daqBoards[BoardNumber].base32 + (0x0850/4));		//address offset of trigger's TRIG_MASK register
-	Trig_mask_val = *p;		//read the register
+	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
+	tempaddr = (int)p;
+	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
 	Trig_mask_val &= 0xF7FF;	//force bit 11 to be clear
 	*p = Trig_mask_val;		//write modified value back
 }
