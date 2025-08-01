@@ -577,7 +577,8 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 	// that used to be here and looping construct to read multiple times into multiple buffers are commented out.
 	//=======================================
 	if(inloop_debug_level >= 2) printf("inLoop: FIFO of module #%d has %lu words in it\n",BoardNumber, DigitizerFifoDepth[BoardNumber]);
-	if(inloop_debug_level >= 2) printf("inLoop: longwords available (%lu) > max buffer size (%u); read limited to %d bytes\n",DigitizerFifoDepth[BoardNumber],MAX_DIG_RAW_XFER_SIZE,MAX_DIG_RAW_XFER_SIZE);
+
+//	if(inloop_debug_level >= 2) printf("inLoop: longwords available (%lu) > max buffer size (%u); read limited to %d bytes\n",DigitizerFifoDepth[BoardNumber],MAX_DIG_RAW_XFER_SIZE,MAX_DIG_RAW_XFER_SIZE);
 	TransferFifoStatus = transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], globQueueUsageFlag, &NumBytesTransferred);
 
 	if (TransferFifoStatus == Success) 
@@ -772,20 +773,21 @@ long NumBytesToRead = 0;
 
 
 	//=======================================
-	//If the FIFO number is 7 (MON_FIFO7), read the actual depth counter.
+	//If the FIFO number is 6 (MON_FIFO7), read the actual depth counter.
 	//For any other FIFO number, assume there are 256 words.
 	//=======================================
 	if(FifoNum == 6)
 		{
 		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LATCHED_DEPTH);		//this is the at-event-boundaries latched counter
 		NumBytesToRead = *ptr;	//value as returned from trigger is number of VME reads you should do
-		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LIVE_DEPTH);		//this is the at-event-boundaries latched counter
+		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LIVE_DEPTH);		//this is the actual number of words
         NumBytesLive = *ptr;
 		}
 	else
 		{
 		NumBytesToRead = 256;	//This is the depth of most trigger FIFOs, in VME reads.
 		}
+
 
 	  NumBytesToRead = NumBytesToRead  * 4;	//convert VME reads to BYTES
 	  NumBytesLive = NumBytesLive  * 4;	//convert VME reads to BYTES
@@ -795,6 +797,15 @@ long NumBytesToRead = 0;
 	// if neither error traps, and you get this far, suck data.
 	//=======================================
 	  if(inloop_debug_level >= 2) printf("inLoop: FIFO %d of module #%d: read depth (numBytesToRead) %ld Bytes, live depth %ld Bytes\n",FifoNum, BoardNumber, NumBytesToRead, NumBytesLive);
+
+	  if (NumBytesToRead == 0) 
+		{
+		printf("CheckAndReadTrigger: ERROR: Depth = 0, EmptyFlag = %d  FullFlag = %d\n",TriggerEmpty[BoardNumber],TriggerFull[BoardNumber]);
+		TransferFifoStatus = TriggerTypeFHeader(0, FifoNum, BoardNumber, globQueueUsageFlag);		//send informational message that trigger was empty
+		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+		return(0);
+		}
+
 		do
 			{
 //                           int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsageFlag, long *NumBytesTransferred)

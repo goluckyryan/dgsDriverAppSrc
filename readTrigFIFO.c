@@ -695,16 +695,16 @@ void dbgReadTrigFifo(int board, int numlongwords, int mode, int FIFO_IDX)
 	datasize_in_bytes = datasize_in_longwords * 4;			//convert value read (longwords) to number of BYTES to DMA
 
 
-    if(inloop_debug_level >= 2) printf("numlongwords %d (longs), datasize_in_bytes %d (bytes) datasize_in_bytes/4 %d (longs)\n",numlongwords,datasize_in_bytes,datasize_in_longwords);
+    printf("numlongwords %d (longs), datasize_in_bytes %d (bytes) datasize_in_bytes/4 %d (longs)\n",numlongwords,datasize_in_bytes,datasize_in_longwords);
     uintBuf = &BitBucket[0];
 
 	if(mode == 1)	//dma mode
-		{
+	{
 
 
 		remain_data_in_bytes = datasize_in_bytes;
 		
-        do{
+        	do{
 
 			if( remain_data_in_bytes > 0x10000 ) {
 				request_data_in_bytes = 0x10000;	
@@ -712,43 +712,44 @@ void dbgReadTrigFifo(int board, int numlongwords, int mode, int FIFO_IDX)
 				request_data_in_bytes = remain_data_in_bytes;
 			}
 			remain_data_in_bytes = remain_data_in_bytes - request_data_in_bytes;
-		
-			
-			if(inloop_debug_level >= 1) printf("datasize : %d| request %d , remain %d\n",datasize_in_bytes, request_data_in_bytes, remain_data_in_bytes);
+		    if(remain_data_in_bytes > 0 )
+				{
+				if(inloop_debug_level >= 1) printf("datasize : %d| request %d , remain %d\n",datasize_in_bytes, request_data_in_bytes, remain_data_in_bytes);
 
-			dmaStat = sysVmeDmaV2LCopy(
+				dmaStat = sysVmeDmaV2LCopy(
 					(unsigned char *)(daqBoards[board].base32 + (FIFO_READ_ADDRESS[FIFO_IDX] / 4)),
 					(unsigned char *)(uintBuf + count),
 					 request_data_in_bytes);  //the actual read....
-			if (dmaStat != OK) {
-				printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
-			}else {
-				if(inloop_debug_level >= 1) printf("DMA success : stat %d datasize_in_bytes %d\n",dmaStat,datasize_in_bytes);
-			}
-
-			count += 0x4000;
+				if (dmaStat != OK) 
+					{
+					printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
+					}
+				else 
+					{
+					if(inloop_debug_level >= 1) printf("DMA success : stat %d datasize_in_bytes %d\n",dmaStat,datasize_in_bytes);
+					}
+				count += 0x4000;
+				}
 
 		}while(remain_data_in_bytes > 0 );
 
 	}
 	else
+	{
+		printf("Dumping %d words to buffer, not using DMA\n",(datasize_in_longwords));
+                for (j = 0; j < (datasize_in_longwords); j++) 
 		{
-		if(inloop_debug_level >= 1) printf("Dumping %d words to buffer, not using DMA\n",(datasize_in_longwords));
-        for (j = 0; j < (datasize_in_longwords); j++) 
-			{
 			BitBucket[j] = *(daqBoards[board].base32 + (FIFO_READ_ADDRESS[FIFO_IDX]/4));  //longword by longword, pump mud.
-			}
 		}
+	}
 
-	if (inloop_debug_level >= 2 ) 
-		{
-		//either way you get it, now dump the data.
-		  if( datasize_in_longwords > 0x2C00 ) startDisplayIndex = 0x4000 - 100;
-		for (j = startDisplayIndex; j < (datasize_in_longwords); j++) 
-			{
-			printf("index:%04d    data:%08X\n",j,BitBucket[j]);
-			}
-		}
+
+	//either way you get it, now dump the data.
+	if( datasize_in_longwords > 0x2C00 ) startDisplayIndex = 0x4000 - 100;
+	for (j = startDisplayIndex; j < (datasize_in_longwords); j++) 
+	{
+		printf("index:%04d    data:%08X\n",j,BitBucket[j]);
+	}
 
 }
 
