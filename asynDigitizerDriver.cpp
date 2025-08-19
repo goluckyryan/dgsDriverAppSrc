@@ -327,15 +327,20 @@ asynStatus status;
 //param_addres_cnt is incremented by each call to setAddress(), a function that is called by the #included files.
 //back in the day, that used to be an enum{} in the #included file, limiting us to only one #include.
 
+
 	printf("Constructing new asynDigitizerDriver with # of parameters = %d\n",param_address_cnt);
 
 	#include "asynDigParams.c"
 
 	printf(".......asynDigitizerDriver now has # of parameters = %d after loading from file asynDigParams.c\n",param_address_cnt);
 
+//In an effort to simplify, since we really don't think the VME FPGA will ever change again, reduced back to 
+//one #included file 20250815, and put all digitizer VME registers in the digitizer spreadsheet as EPICS-only objects (no VHDL type)
+#if 0
 	#include "asynDigParamsVME.c"
 
 	printf(".......asynDigitizerDriver now has # of parameters = %d after loading from file asynDigParamsVME.c\n",param_address_cnt);
+#endif
 
 	strcpy(driverName,"asynDigitizerDriver");
 	 /* Create the thread that reads vme regs in  background */

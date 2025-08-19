@@ -66,8 +66,9 @@ volatile int pcc_time_counter;
 
 //there are now two separate params files, one for the digitizer main,
 //one for the digitizer VME.  20240221  JTA	
+//returned back to one file 20250818  JTA
 #include "asynDigParams.h"
-#include "asynDigParamsVME.h"
+///	#include "asynDigParamsVME.h"
 
 //apparently the above cannot work, so I am forced to manually merge the two generated params files together.
 //  #include "MergedasynDigParams.h"

@@ -368,5 +368,8 @@ int reg_fpga_version;
 int reg_full_code_revision;
 int reg_code_date_VME;
 
-enum {num_params = 432};
+enum {num_params = 369};
+
+
+
 

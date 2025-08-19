@@ -216,6 +216,12 @@ createParam("regin_hilo_7",asynParamUInt32Digital,&regin_hilo_7);
 createParam("regin_hilo_8",asynParamUInt32Digital,&regin_hilo_8);
 createParam("regin_hilo_9",asynParamUInt32Digital,&regin_hilo_9);
 createParam("reg_sd_config",asynParamUInt32Digital,&reg_sd_config);
+createParam("reg_vme_fpga_ctl",asynParamUInt32Digital,&reg_vme_fpga_ctl);
+createParam("reg_vme_aux_status",asynParamUInt32Digital,&reg_vme_aux_status);
+createParam("vme_clk_ctrl",asynParamUInt32Digital,&vme_clk_ctrl);
+createParam("SERIAL_NUMBER",asynParamUInt32Digital,&SERIAL_NUMBER);
+createParam("reg_vme_code_rev",asynParamUInt32Digital,&reg_vme_code_rev);
+createParam("reg_vme_code_date",asynParamUInt32Digital,&reg_vme_code_date);
 
 setUIntDigitalParam(regin_board_id,1,0xffffffff);
 setUIntDigitalParam(reg_programming_done,1,0xffffffff);
@@ -435,6 +441,12 @@ setUIntDigitalParam(regin_hilo_7,1,0xffffffff);
 setUIntDigitalParam(regin_hilo_8,1,0xffffffff);
 setUIntDigitalParam(regin_hilo_9,1,0xffffffff);
 setUIntDigitalParam(reg_sd_config,1,0xffffffff);
+setUIntDigitalParam(reg_vme_fpga_ctl,1,0xffffffff);
+setUIntDigitalParam(reg_vme_aux_status,1,0xffffffff);
+setUIntDigitalParam(vme_clk_ctrl,1,0xffffffff);
+setUIntDigitalParam(SERIAL_NUMBER,1,0xffffffff);
+setUIntDigitalParam(reg_vme_code_rev,1,0xffffffff);
+setUIntDigitalParam(reg_vme_code_date,1,0xffffffff);
 
 setAddress(regin_board_id,0x0000);
 setAddress(reg_programming_done,0x0004);
@@ -654,4 +666,11 @@ setAddress(regin_hilo_7,0x082C);
 setAddress(regin_hilo_8,0x0830);
 setAddress(regin_hilo_9,0x0834);
 setAddress(reg_sd_config,0x0848);
+setAddress(reg_vme_fpga_ctl,0x0900);
+setAddress(reg_vme_aux_status,0x0908);
+setAddress(vme_clk_ctrl,0x0910);
+setAddress(SERIAL_NUMBER,0x0920);
+setAddress(reg_vme_code_rev,0x0924);
+setAddress(reg_vme_code_date,0x0928);
+
 

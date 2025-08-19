@@ -216,6 +216,14 @@ int regin_hilo_7;
 int regin_hilo_8;
 int regin_hilo_9;
 int reg_sd_config;
+int reg_vme_fpga_ctl;
+int reg_vme_aux_status;
+int vme_clk_ctrl;
+int SERIAL_NUMBER;
+int reg_vme_code_rev;
+int reg_vme_code_date;
 
-enum {num_params = 218};
+enum {num_params = 224};
+
+
 
