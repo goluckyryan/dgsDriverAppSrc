@@ -46,6 +46,7 @@ unsigned int last_timestamp[GVME_MAX_CARDS][16];  // second index is for each ch
 	short LookForChannel[GVME_MAX_CARDS];
 //	short TraceSearchEnable;
 	short ChannelTrace[GVME_MAX_CARDS][NUM_DIG_CHANNELS][MAX_TRACE_LENGTH]; //70kB, trace PV is defined as a short
+	short StrippedChannelTrace[MAX_TRACE_LENGTH]; 
 	short TraceLength[GVME_MAX_CARDS][NUM_DIG_CHANNELS];
 #endif
 
@@ -169,6 +170,8 @@ void ResetStats(void)
 
 int GetTrace(short* trace, int board, int channel)
 {
+int jta;		//counter used only in this routine
+int ModLength;
 	start_profile_counter(PROF_OL_GET_TRACE);
 	#ifdef HISTO_ENABLE
 		static unsigned short trace_toggle = 0;
@@ -186,7 +189,14 @@ int GetTrace(short* trace, int board, int channel)
 		return 2*MAX_HISTO_DELTA;
 	#else
 		#ifdef TRACE_ENABLE
-			memcpy(trace, ChannelTrace[board][channel], TraceLength[board][channel] * 2);
+			//strip 'horns' (timing/downsampling marks)
+			//excess/unused variable StrippedChannelTrace not used, go directly to trace to try to save a little CPU.
+			ModLength = TraceLength[board][channel] * 2;
+			for(jta=0;jta<ModLength;jta++)
+				trace[jta] = ChannelTrace[board][channel][jta] & 0x3FFF;
+
+//			memcpy(trace, ChannelTrace[board][channel], TraceLength[board][channel] * 2);
+//			memcpy(trace, StrippedChannelTrace, TraceLength[board][channel] * 2);
 			stop_profile_counter(PROF_OL_GET_TRACE);
 			return TraceLength[board][channel];
 		#else

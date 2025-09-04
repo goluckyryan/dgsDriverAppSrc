@@ -551,7 +551,7 @@ ss inLoop {
 							case BrdType_DGS_MTRIG:
 								//Trigger routers and trigger masters are cleared by writing to the FIFO_RESETS register at address 0x08F0.
 								if (inloop_debug_level >= 3) printf("InLoop : INITIAL_FIFO_CLEAR: Call ClearTrigFIFO() for board type %d: %s\n", daqBoards[BoardNumber].board_type, BoardTypeNames[daqBoards[BoardNumber].board_type]);
-								SetTrigSoftwareVeto(BoardNumber);
+								//SetTrigSoftwareVeto(BoardNumber);
 								ClearTrigFIFO(BoardNumber, FIFO_index[BoardNumber]);
 								break;
 
@@ -836,7 +836,7 @@ ss inLoop {
 							break;
 
 						case BrdType_DGS_MTRIG:
-							SetTrigSoftwareVeto(BoardNumber);
+							//SetTrigSoftwareVeto(BoardNumber);
 							break;
 
 						case BrdType_LBNL_DIG:

@@ -77,7 +77,7 @@ int MTRG_USR_PKG_DATA_REG = (0x214/4);
 int MTRG_FIFO = (0x5000/4);
 int MTRG_MON7_LATCHED_DEPTH = (0x01AC/4);		//this is the at-event-boundaries latched counter
 int MTRG_MON7_LIVE_DEPTH = (0x0154/4);		//this is the LIVE depth counter
-int MTRG_TRIG_MASK_REG = (0x0850/4);		//address offset of trigger's TRIG_MASK register
+// int MTRG_TRIG_MASK_REG = (0x0850/4);		//address offset of trigger's TRIG_MASK register // Removed MBO 20250904: We don't want to modify this register in the IOC.
 int RTRG_FIFO_RESET_REG = (0x8F0/4);	//address offset of trigger pulsed control register used for FIFO resets
 
 //==============================================================================
@@ -184,7 +184,7 @@ int NumBoardsEnabled = 0;
 					DigitizerFull[BoardNumber] = 0;		//initialize all full flags to "not full"
 					DigitizerEmpty[BoardNumber] = 1;		//initialize all empty flags to "empty"
 					//turn on Software Veto, clear the FIFO.
-					SetTrigSoftwareVeto(BoardNumber);
+					// SetTrigSoftwareVeto(BoardNumber); // Removed MBO 20250904: We don't want to do this.
 					//ClearTrigFIFO(BoardNumber, FIFO_index[BoardNumber]); // comment out by Ryan, since FIFO clear will be done in inLoop:INITIAL_FIFO_CLEAR
 					break;
 				case BrdType_DGS_RTRIG:		//	"DGS Router Trigger",		//6	
@@ -238,7 +238,7 @@ int NumBoardsEnabled = 0;
 				case 6 : daqBoards[BoardNumber].EnabledForReadout = B6_SW_en; break;
 				case 7 : daqBoards[BoardNumber].EnabledForReadout = 0; break;
 				default : break;
-				}		//end switch(BoardNumber)
+				}		//end switch(BoardNumber) // Removed MBO 20250904
 			if(daqBoards[BoardNumber].EnabledForReadout == 1) NumBoardsEnabled++;
 			if(inloop_debug_level >= 2) printf("\n====== Board %d has mainOK set.  Readout enable is %d\n",BoardNumber,daqBoards[BoardNumber].EnabledForReadout);
 			}
@@ -407,7 +407,7 @@ extern void EnableModule(int BoardNumber)
 				break;
 
 			case BrdType_DGS_MTRIG:
-				ClearTrigSoftwareVeto(BoardNumber);
+			//	ClearTrigSoftwareVeto(BoardNumber); // Removed MBO 20250904: We don't want to do this.
 				break;			//trigger modules don't need any explicit enable, but here is where you'd do it if needed.
 
 			case BrdType_DGS_RTRIG:
@@ -912,36 +912,55 @@ extern void CloseDumpFiles(void)
 //	SetTrigSoftwareVeto() uses direct memory addressing
 //	to turn on the Software Veto (bit 11 of the Trigger Mask register)
 //==============================================================================
-extern void SetTrigSoftwareVeto(int BoardNumber)
-{
-int tempaddr;
-int *p = NULL;
-unsigned int Trig_mask_val = 0;
-
-	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto (Veto = ON)\n");
-	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
-	tempaddr = (int)p;
-	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
-	Trig_mask_val = *p;		//read the register
-	Trig_mask_val |= 0x0800;	//force bit 11 to be set
-	*p = Trig_mask_val;		//write modified value back
-}
+// MBO 20250904: Remove the software veto from the ioc, as this code is causing
+//               problems.   This is likely triggering a firmware bug, but as
+//               we are running in 24~48 hours, will attempt to not trigger the
+//               firmware bug by removing this logic.
+//               In the long run, we do not want the IOC to be toggling enables
+//               or chaning the system configuraitions.
+//
+//               Any software veto should be implemented in the softIOC.
+//
+//extern void SetTrigSoftwareVeto(int BoardNumber)
+//{
+//int tempaddr;
+//int *p = NULL;
+//unsigned int Trig_mask_val = 0;
+//
+//	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto (Veto = ON)\n");
+//	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
+//	tempaddr = (int)p;
+//	if(inloop_debug_level >= 2) printf("inLoopSupport:SetTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
+//	Trig_mask_val = *p;		//read the register
+//	Trig_mask_val |= 0x0800;	//force bit 11 to be set
+//	*p = Trig_mask_val;		//write modified value back
+//}
 
 //==============================================================================
 //	ClearTrigSoftwareVeto() uses direct memory addressing
 //	to turn on the Software Veto (bit 11 of the Trigger Mask register)
 //==============================================================================
-extern void ClearTrigSoftwareVeto(int BoardNumber)
-{
-int tempaddr;
-int *p = NULL;
-unsigned int Trig_mask_val = 0;
-
-	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto\n");
-	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
-	tempaddr = (int)p;
-	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
-	Trig_mask_val &= 0xF7FF;	//force bit 11 to be clear
-	*p = Trig_mask_val;		//write modified value back
-}
+// MBO 20250904: Remove the software veto from the ioc, as this code is causing
+//               problems.   This is likely triggering a firmware bug, but as
+//               we are running in 24~48 hours, will attempt to not trigger the
+//               firmware bug by removing this logic.
+//               In the long run, we do not want the IOC to be toggling enables
+//               or chaning the system configuraitions.
+//
+//               Any software veto should be implemented in the softIOC.
+//
+//extern void ClearTrigSoftwareVeto(int BoardNumber)
+//{
+//int tempaddr;
+//int *p = NULL;
+//unsigned int Trig_mask_val = 0;
+//
+//	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto\n");
+//	p = (int *)(daqBoards[BoardNumber].base32 + MTRG_TRIG_MASK_REG);		//address offset of trigger's TRIG_MASK register
+//	tempaddr = (int)p;
+//	if(inloop_debug_level >= 2) printf("inLoopSupport:ClearTrigSoftwareVeto : tempaddr=%08X\n", tempaddr);
+//	Trig_mask_val = *p;		//read the register
+//	Trig_mask_val &= 0xF7FF;	//force bit 11 to be clear
+//	*p = Trig_mask_val;		//write modified value back
+//}
 
