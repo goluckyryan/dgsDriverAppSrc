@@ -78,50 +78,42 @@ unsigned int BitBucket[MAX_DIG_RAW_XFER_SIZE];  //for reads that go nowhere (que
 
 * Numwords is amount of data desired (longwords)
  ****************************************************************************/
-int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *NumBytesTransferred)
-{
-    struct daqBoard *bd;	//structure of board information
-    long DMA_length_in_bytes;		//amount of data to transfer in each DMA
+int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *NumBytesTransferred){
+	struct daqBoard *bd;	//structure of board information
+	long DMA_length_in_bytes;		//amount of data to transfer in each DMA
 	long datasize_in_bytes;			//total number of bytes we want
 	long data_remaining_in_bytes;
-    int queue_request_stat;	//for return value from queue request function
-    rawEvt *rawBuf;			//pointer to queue message buffer
-    unsigned int *uintBuf;  //pointer to data read from FIFO
+	int queue_request_stat;	//for return value from queue request function
+	rawEvt *rawBuf;			//pointer to queue message buffer
+	unsigned int *uintBuf;  //pointer to data read from FIFO
 
-	
+	int dmaStat = OK;
 
-    int dmaStat = OK;
+	start_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
 
-    start_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+	bd = &daqBoards[bdnum];
 
-    bd = &daqBoards[bdnum];
-
-    //datasize_in_bytes is in bytes, num of btytes to xfer from vme fifo
+	//datasize_in_bytes is in bytes, num of btytes to xfer from vme fifo
 	//numwords, the passed-in value, is in 32-bit longwords (int)
-    switch (numlongwords)
-		{
+	switch (numlongwords){
 		// a value of zero is nonsensical and causes a return in error.
 		case 0 :
 			if(inloop_debug_level >= 0) printf("\ntransferDigFifo : illegal transfer length of 0 requested.  Aborting transfer.\n");
 			return(-2);
 		    //if neither "do max" nor zero, constrain to no bigger than MAX_DIG_RAW_XFER_SIZE
 		default:
-	   	    datasize_in_bytes=numlongwords * 4;	//numwords is the # of 32-bit words (from register), convert to BYTES
-		    if (datasize_in_bytes>MAX_DIG_RAW_XFER_SIZE) 
-				{
+			datasize_in_bytes = numlongwords * 4;	//numwords is the # of 32-bit words (from register), convert to BYTES
+			if (datasize_in_bytes > MAX_DIG_RAW_XFER_SIZE) {
 				if(inloop_debug_level >= 1) printf("\ntransferDigFifo : datasize_in_bytes %ld (bytes) > max transfer, will do multiple DMAs of %d each\n", datasize_in_bytes,MAX_DIG_RAW_XFER_SIZE);
-				DMA_length_in_bytes=MAX_DIG_RAW_XFER_SIZE;
-				}
-			else
-				{
+				DMA_length_in_bytes = MAX_DIG_RAW_XFER_SIZE;
+			}else{
 				DMA_length_in_bytes = datasize_in_bytes;
-				}
+			}
 			break;
-		} // end switch(numwords)
-    if(inloop_debug_level >= 2) printf("numlongwords %ld , datasize_in_bytes %ld (bytes) datasize_in_bytes/4 %ld (longs)\n",numlongwords,datasize_in_bytes,datasize_in_bytes/4);
+	} // end switch(numwords)
+	if(inloop_debug_level >= 2) printf("numlongwords %ld , datasize_in_bytes %ld (bytes) datasize_in_bytes/4 %ld (longs)\n",numlongwords,datasize_in_bytes,datasize_in_bytes/4);
 	//initialize the return value to what we're going to ask for....might change later in this routine if transfer error.
 	*NumBytesTransferred = datasize_in_bytes;
-
 
 	//================================================
 	//	Buffer logic
@@ -133,37 +125,33 @@ int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *
 	//	buffer.  Note that what you get from the queue is a buffer DESCRIPTOR structure (rawBuf); the
 	//	rawBuf structure has a POINTER to the actual data buffer.
 	//================================================
-    /* msgQReceive receives a message from the qFree queue; copies message to rawBuf; return value is # of bytes received, or a magic value ERROR. */
+	/* msgQReceive receives a message from the qFree queue; copies message to rawBuf; return value is # of bytes received, or a magic value ERROR. */
 	rawBuf = NULL;		//suppress warning, initialize pointer.
-    if(QueueUsageFlag == 1) // 1 means yes, use the queue system
-		{
+	if(QueueUsageFlag == 1){ // 1 means yes, use the queue system
 		queue_request_stat = getFreeBuf(&rawBuf);	//fetch record descriptor from queue
 		//handle queueing error
-		if (queue_request_stat != Success)
-            {
-            if(inloop_debug_level >= 0) printf("Xfr Dig FIFO : Starved for raw buffers- throwing away data\n");
+		if (queue_request_stat != Success){
+			if(inloop_debug_level >= 0) printf("Xfr Dig FIFO : Starved for raw buffers- throwing away data\n");
 			*NumBytesTransferred = 0;
 
-            stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
-            return(queue_request_stat);	//inLoop will keep pounding until one frees up.
-            }
-        //here we assume we have a buffer. else we would have returned!
-        uintBuf = (unsigned int *) rawBuf->data;	//copy the pointer to the data buffer, recast to unsigned int for consistency with BitBucket definition
+			stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+			return(queue_request_stat);	//inLoop will keep pounding until one frees up.
+		}
+		//here we assume we have a buffer. else we would have returned!
+		uintBuf = (unsigned int *) rawBuf->data;	//copy the pointer to the data buffer, recast to unsigned int for consistency with BitBucket definition
 		rawBuf->board =  bd->board;  //copy board # from daqBoards[] system structure into rawBuf for identification
-        rawBuf->board_type =  bd->board_type;  //copy board type from daqBoards[] system structure into rawBuf for identification  Added 20220801
-        rawBuf->data_type =  0;  //Digitizers, by definition, have a data type of 0.  Added 20220801
+		rawBuf->board_type =  bd->board_type;  //copy board type from daqBoards[] system structure into rawBuf for identification  Added 20220801
+		rawBuf->data_type =  0;  //Digitizers, by definition, have a data type of 0.  Added 20220801
 		rawBuf->len = datasize_in_bytes; //this is the full data size derived from reading the digitizer fifo depth, in bytes.
-        }
-    else	//user said not to use queues
-        {
-        rawBuf = NULL;
-        uintBuf = &BitBucket[0];
+	}else{	//user said not to use queues      
+		rawBuf = NULL;
+		uintBuf = &BitBucket[0];
 		if(inloop_debug_level >= 2) printf("Queues disabled, dumping to BitBucket\n");
-        }
-        //we dma directly to the buffer if DMA is enabled.
+	}
+	//we dma directly to the buffer if DMA is enabled.
 
 #ifdef MV5500
-        //DMA from fifo of digitizer to uintBuf.
+		//DMA from fifo of digitizer to uintBuf.
 		//The possible returns here are
 		//  OK
 		//	ERROR (driver not initialized, or invalid argument)
@@ -171,84 +159,72 @@ int transferDigFifoData(int bdnum, long numlongwords, int QueueUsageFlag, long *
 		//	DGCS_VERR	(VME error)
 		//	DGCS_P_ERR	(protocol error)
 		// sysVmeDmaV2LCopy (UCHAR  *localVmeAddr,UCHAR *localAddr, UINT32 nbytes);
-        dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, DMA_length_in_bytes);  //the actual read....
+		if( inloop_debug_level >= 1) printf("About to take DMA semaphore\n");
+		dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, DMA_length_in_bytes);  //the actual read....
 #endif
 
-		if (dmaStat != OK) 
-			{
-			if(inloop_debug_level >= 0) printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
-			*NumBytesTransferred = 0;
-			//if DMA failed, presumably we here return the message back to the queue.
-			//In the hopes the transfer will be tried again somewhere?
-            if(QueueUsageFlag == 1)
-		        {
-				queue_request_stat = putFreeBuf(rawBuf);
-		        //It's possible the queue overflows at this point, so there should be a test
-				if(queue_request_stat != Success) 
-					{
-					stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
-					return(queue_request_stat);
-					}
-				}	//if(QueueUsageFlag == 1)
-            stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
-            return(DMAError);
-       		} //end if (dmaStat != OK) 
-		else 
-			{
-			if(inloop_debug_level >= 2) printf("DMA success : stat %d \n",dmaStat);
-			} //end else clause if (dmaStat != OK) 
+	if (dmaStat != OK) {
+		if(inloop_debug_level >= 0) printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
+		*NumBytesTransferred = 0;
+		//if DMA failed, presumably we here return the message back to the queue.
+		//In the hopes the transfer will be tried again somewhere?
+		if(QueueUsageFlag == 1) {
+			queue_request_stat = putFreeBuf(rawBuf);
+			//It's possible the queue overflows at this point, so there should be a test
+			if(queue_request_stat != Success) {
+				stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+				return(queue_request_stat);
+			}
+		}	//if(QueueUsageFlag == 1)
+		stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+		return(DMAError);
+	}else{ //end if (dmaStat != OK) 
+		if(inloop_debug_level >= 2) printf("DMA success : stat %d \n",dmaStat);
+	} //end else clause if (dmaStat != OK) 
 
 	// All readouts should start with 0xAAAAAAAA.  Check this here before passing to queue.
-	if (*uintBuf == 0xAAAAAAAA)
-		{
+	if (*uintBuf == 0xAAAAAAAA){
 		if(inloop_debug_level >= 2) printf("\nReadDigFifo : data start correct\n");
-		}
-	else
-		{
+	}else{
 		if(inloop_debug_level >= 0) printf("\nReadDigFifo : data start ERROR: expect 0xAAAAAAAA, got %08X\n", *uintBuf);
-		}
-
+	}
 
 	//20230414: Calculate whether there is a 2nd DMA required, and if so do it.
 
 	data_remaining_in_bytes = datasize_in_bytes - DMA_length_in_bytes;	//calculate amount of data remaining
-	if (data_remaining_in_bytes > 0)
-		{
+	if (data_remaining_in_bytes > 0){
 		if(inloop_debug_level >= 2) printf("\nReadDigFifo : 2nd DMA required to get all data, %ld bytes remain\n\n\n\n\n\n",data_remaining_in_bytes);
-		if (data_remaining_in_bytes > MAX_DIG_RAW_XFER_SIZE)
-			{
+		if (data_remaining_in_bytes > MAX_DIG_RAW_XFER_SIZE){
 			if(inloop_debug_level >= 0) printf("DMA Error: total transfer size requires more than two DMAs\n");
 			return(DMAError);
-			}
+		}
 		//if no error in size, do another DMA appending to the first one
 		if(inloop_debug_level >= 2) printf("adjusting pointer.....\n\n\n\n\n\n");
 		uintBuf = (unsigned int *) (&rawBuf->data[MAX_DIG_XFER_SIZE_IN_LONGWORDS]);
 		if(inloop_debug_level >= 2) printf("2nd transfer.....\n\n\n\n\n\n");
-        dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, data_remaining_in_bytes);  //the actual read....
+		dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, data_remaining_in_bytes);  //the actual read....
 		if(inloop_debug_level >= 2) printf("\n\n\n\n\n\n");
-		}
+	}
 
-    //
-    // at this point the data is transferred from digitizer's fifo and is in rawBuf->data if queueing is enabled.
-    // Change the state of the buffer to OWNER_Q_WRITTEN, and then enter the buffer 
-    // into the qWritten queue.
-    if(QueueUsageFlag == 1)
-        {
+	//
+	// at this point the data is transferred from digitizer's fifo and is in rawBuf->data if queueing is enabled.
+	// Change the state of the buffer to OWNER_Q_WRITTEN, and then enter the buffer 
+	// into the qWritten queue.
+	if(QueueUsageFlag == 1) {
 		rawBuf->board = bdnum;
 
 		rawBuf->len = datasize_in_bytes;		//push in length of buffer, in bytes.
 		queue_request_stat = putWrittenBuf(rawBuf);
-//		DumpRawEvt (rawBuf, "ReadDigFIFO", 10,0);
-        //It's possible the queue overflows at this point, so there should be a test
-		if(queue_request_stat != Success) 
-			{
-           	stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+		//DumpRawEvt (rawBuf, "ReadDigFIFO", 10,0);
+		//It's possible the queue overflows at this point, so there should be a test
+		if(queue_request_stat != Success) {
+			stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
 			return(queue_request_stat);
-			}
+		}
 	}
 
-    stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
-    return(Success);   //if we haven't exited yet, declare success...
+	stop_profile_counter(PROF_IL_XFER_DIG_FIFO_DATA);
+	return(Success);   //if we haven't exited yet, declare success...
 
 }
 
@@ -565,50 +541,43 @@ int DigitizerTypeFHeader(int mode, int BoardNumber, int QueueUsageFlag)
 //  to the console.  NOT USED BY DAQ.  CONSOLE DEBUG USE ONLY.  
 //
 /***********************************************************************************/
-void dbgReadDigFifo(int board, int numwords, int mode)
-{
-    int datasize_in_bytes;			//amount of data to transfer
-    unsigned int *uintBuf;  //pointer to data read from FIFO
+void dbgReadDigFifo(int board, int numwords, int mode){
+	int datasize_in_bytes;			//amount of data to transfer
+	unsigned int *uintBuf;  //pointer to data read from FIFO
 	int j;
-    struct daqBoard *bd;	//structure of board information
-    int dmaStat = OK;
+	struct daqBoard *bd;	//structure of board information
+	int dmaStat = OK;
 
-    bd = &daqBoards[board];
+	bd = &daqBoards[board];
 
-    //datasize_in_bytes is in bytes, num of btytes to xfer from vme fifo
-    //constrain to no bigger than MAX_DIG_RAW_XFER_SIZE
-    if (numwords==-1)
-		{
+	//datasize_in_bytes is in bytes, num of btytes to xfer from vme fifo
+	//constrain to no bigger than MAX_DIG_RAW_XFER_SIZE
+	if (numwords==-1){
 		datasize_in_bytes = *(daqBoards[board].base32 + (0x004/4));	//read from 'programming done' to get depth of FIFO and read that.
 		datasize_in_bytes = datasize_in_bytes & 0x007FFFF;	//make sure flag bits aren't included in read depth.
 		datasize_in_bytes = datasize_in_bytes * 4;			//convert value read (longwords) to number of BYTES to DMA
-		}
-    else
-        datasize_in_bytes=numwords * 4;	//numwords is the # of 32-bit words (from register), convert to BYTES
+	}else{
+		datasize_in_bytes=numwords * 4;	//numwords is the # of 32-bit words (from register), convert to BYTES
+	}
 
-    if (datasize_in_bytes>MAX_DIG_RAW_XFER_SIZE) datasize_in_bytes=MAX_DIG_RAW_XFER_SIZE;
-    printf("numwords %d (longs), datasize_in_bytes %d (bytes) datasize_in_bytes/4 %d (longs)\n",numwords,datasize_in_bytes,datasize_in_bytes/4);
-    uintBuf = &BitBucket[0];
+	if (datasize_in_bytes>MAX_DIG_RAW_XFER_SIZE) datasize_in_bytes=MAX_DIG_RAW_XFER_SIZE;
+	printf("numwords %d (longs), datasize_in_bytes %d (bytes) datasize_in_bytes/4 %d (longs)\n",numwords,datasize_in_bytes,datasize_in_bytes/4);
+	uintBuf = &BitBucket[0];
 
-	if(mode == 1)	//dma mode
-		{
+	if(mode == 1){	//dma mode
 		dmaStat = sysVmeDmaV2LCopy((unsigned char *)bd->FIFO,(unsigned char *)uintBuf, datasize_in_bytes);  //the actual read....
 		if (dmaStat != OK) {
 			printf("DMA Error: transfer returned %d (xfer 1)\n", dmaStat);
-			}
-		else {
+		}else {
 			printf("DMA success : stat %d datasize_in_bytes %d\n",dmaStat,datasize_in_bytes);
-			}
 		}
-	else
-		{
+	}else{
 		printf("Dumping %d words to buffer, not using DMA\n",(datasize_in_bytes/4));
-        for (j = 0; j < (datasize_in_bytes/4); j++) 
-			{
+		for (j = 0; j < (datasize_in_bytes/4); j++) {
 			*uintBuf = *((unsigned int *) bd->FIFO);  //longword by longword, pump mud.
 			uintBuf++;
-			}
 		}
+	}
 
 	//either way you get it, now dump the data.
 	for (j = 0; j < (datasize_in_bytes/4); j++) {

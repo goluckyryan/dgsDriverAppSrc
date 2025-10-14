@@ -38,7 +38,7 @@
 	//redefined as actual size of FIFO, in bytes.
 //	#define MAX_DIG_RAW_XFER_SIZE	(512 * 1024)		/* bytes */	//explicitly defined as "the max you can DMA".
 
-	#define MAX_DIG_RAW_XFER_SIZE	(1024 * 1024)		/* bytes */	
+	#define MAX_DIG_RAW_XFER_SIZE	(512 * 1024)		/* bytes */	
 	#define MAX_DIG_XFER_SIZE_IN_LONGWORDS (MAX_DIG_RAW_XFER_SIZE/4)  /* unsigned ints are, we believe, 32 bits */
 
 	#define TRIG_MON_FIFO_SIZE (4 * 1024)				/* bytes when read as 32-bit longwords (data only in lower 16 of 32-bit word) */

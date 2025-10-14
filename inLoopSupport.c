@@ -454,14 +454,10 @@ extern void EnableModule(int BoardNumber)
 //  may be in the FIFO, so we can only check data length based upon the minimum and maximum event
 //	sizes known to be in this particular board.
 //==============================================================================
-extern long CheckAndReadDigitizer(int BoardNumber, int SendNextEmpty, int globQueueUsageFlag)
-{
-int tempval;	//temporary holder for data read from VME
-long NumBytesTransferred;
-int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
-
-
-
+extern long CheckAndReadDigitizer(int BoardNumber, int SendNextEmpty, int globQueueUsageFlag){
+	int tempval;	//temporary holder for data read from VME
+	long NumBytesTransferred;
+	int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 
 	if(inloop_debug_level >= 2) printf("inLoopSupport: CheckAndReadDigitizer\n");
 
@@ -500,8 +496,7 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 	//=======================================
 	//Check for digitizer full error.  this should be impossible, means firmware error.
 	//=======================================
-	if (DigitizerFull[BoardNumber]) 
-		{
+	if (DigitizerFull[BoardNumber]) {
 		if(inloop_debug_level >= 0) printf("ERROR : FIFO OVERFLOW (firmware error) in board #%d\n",BoardNumber);
 		TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, globQueueUsageFlag);     //send error header
 		//reset the FIFO by a) disabling the board  b) clearing the fifo  c) re-enabling the board.
@@ -509,28 +504,25 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 		if(inloop_debug_level >= 0) printf("FIFO RESET after overflow in board #%d\n",BoardNumber);
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 		return(-1);
-		} //end if (DigitizerFull[BoardNumber])
+	} //end if (DigitizerFull[BoardNumber])
 
 	//=======================================
 	//Check for digitizer almost full.  If this occurs it means throttle should be in use, and
 	//it also means the data at the end of the FIFO won't be on an event boundary, so you have to reset.
 	//=======================================
-	if (DigitizerAlmostFull[BoardNumber]) 
-		{
+	if (DigitizerAlmostFull[BoardNumber]) {
 		//I_ErrorPrintf("ERROR : FIFO MAXED OUT (almost full set) in board #%d.  You should be using throttle.\n",BoardNumber);
 		if(inloop_debug_level >= 1) printf("WARNING : Digitizer FIFO is full (almost full set) in board #%d.  You should be using throttle.\n",BoardNumber);
 		TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, globQueueUsageFlag);     //send error header
-		} //end if (DigitizerFull[BoardNumber])
+	} //end if (DigitizerFull[BoardNumber])
 
 	//=======================================
 	//if no overflow, then check if FIFO is asserting empty flags,
 	//but depth of FIFO is not zero.  This would be an underflow error.
 	//=======================================
-	if (DigitizerEmpty[BoardNumber])
-		{
-		if(inloop_debug_level >= 0) printf("FIFO EMPTY in board #%d\n",BoardNumber);
-		if (DigitizerFifoDepth[BoardNumber] != 0)
-			{	
+	if (DigitizerEmpty[BoardNumber]){
+		if(inloop_debug_level >= 1) printf("FIFO EMPTY in board #%d\n",BoardNumber);
+		if (DigitizerFifoDepth[BoardNumber] != 0){	
 			if(inloop_debug_level >= 0) printf("InLoop:ERROR:FIFO underflow in board #%d. FIFO Depth counter claims:#%lX\n",BoardNumber, DigitizerFifoDepth[BoardNumber]);
 			TransferFifoStatus = DigitizerTypeFHeader(2, BoardNumber, globQueueUsageFlag);     //send error header
 			//reset the FIFO by a) disabling the board  b) clearing the fifo  c) re-enabling the board.
@@ -538,39 +530,34 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 			if(inloop_debug_level >= 0) printf("FIFO RESET after underflow in board #%d\n",BoardNumber);
 			stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 			return(-2);
-			}
-		//=======================================
-		//	Else case is the true empty - flags were set and counter was zero.
-		//=======================================
-		else
-			{
+		}else{
+			//=======================================
+			//	Else case is the true empty - flags were set and counter was zero.
+			//=======================================	
 			//	To reduce load on Ethernet, SendNextEmpty is a flag that causes
 			//	reporting of true empty to once every 'n' cycles of inLoop.
-			if (SendNextEmpty)
-				{
+			if (SendNextEmpty){
 				TransferFifoStatus = DigitizerTypeFHeader(0, BoardNumber, globQueueUsageFlag);		//send informational message that digitizer was empty
-				}
+			}
 			stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 			return(0);
-			}
-		}  //end If (DigitizerEmpty[BoardNumber])
+		}
+	}  //end If (DigitizerEmpty[BoardNumber])
 
 	// MBO 20230416: It's completely legal and expected to encounter the dig FIFO not empty with the DigitizerFifoDepth still equal to 0.
 	//		Note that this condition means than the arrivial of an event that can be read is imminent, and will be avilable
 	//		on the next read pass.  As such may not be necessary to fire off the "true empty" F header report, as we know it's not
 	//		not truly empty, and IF the digitizer is working properly that event will be sent on the next scan cycle.
 	//		However, I will send the 'F' anyway, as this also could be an indication of a digitizer firmware problem.
-	if (DigitizerFifoDepth[BoardNumber] == 0)
-		{
+	if (DigitizerFifoDepth[BoardNumber] == 0){
 		// NOT AN ERROR, but I want to see it during verification testing.
 		if(inloop_debug_level >= 1) printf("No data ready, but FIFO not EMPTY in board #%d\n",BoardNumber);
-		if (SendNextEmpty)
-			{
+		if (SendNextEmpty){
 			TransferFifoStatus = DigitizerTypeFHeader(0, BoardNumber, globQueueUsageFlag);		//send informational message that digitizer was empty
-			}
+		}
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 		return(0);
-		}
+	}
 
 	//=======================================
 	// if neither empty nor overflowed, read data.  As of 20230412 the buffer is big enough to eat an entire FIFO, so checks
@@ -581,24 +568,19 @@ int TransferFifoStatus;		//for status return of DigitizerTypeFHEader()
 //	if(inloop_debug_level >= 2) printf("inLoop: longwords available (%lu) > max buffer size (%u); read limited to %d bytes\n",DigitizerFifoDepth[BoardNumber],MAX_DIG_RAW_XFER_SIZE,MAX_DIG_RAW_XFER_SIZE);
 	TransferFifoStatus = transferDigFifoData(BoardNumber, DigitizerFifoDepth[BoardNumber], globQueueUsageFlag, &NumBytesTransferred);
 
-	if (TransferFifoStatus == Success) 
-		{
+	if (TransferFifoStatus == Success) {
 		if(inloop_debug_level >= 2) printf("inLoop: readout of FIFO complete\n"); 
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 		return(NumBytesTransferred);
-		}
-	else if (TransferFifoStatus == NoBufferAvail)
-		{
+	}else if (TransferFifoStatus == NoBufferAvail){
 		if(inloop_debug_level >= 0) printf("inLoop: read of FIFO returned NoBufferAvail");
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 		return(-3);
-		}		
-	else 
-		{
+	}else {
 		if(inloop_debug_level >= 0) printf("inLoop: DMAError: you're screwed\n");
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 		return(-3);
-		}
+	}
 
 	stop_profile_counter(PROF_IL_CHECK_AND_READ_DIG);
 	return(-4);		//should be impossible to get here.
@@ -711,15 +693,14 @@ int MON_FIFO_STAT, CHAN_FIFO_STAT;
 
 
 //==============================================================================
-extern long CheckAndReadTrigger(int BoardNumber, int FifoNum, int SendNextEmpty, int globQueueUsageFlag)
-{
-int tempval;	//temporary holder for data read from VME
-int FullFlag, EmptyFlag;
-int *ptr;
-long NumBytesTransferred;
-long NumBytesLive=0; //20250602 Ryan
-int TransferFifoStatus;		//for status return of TriggerTypeFHEader()
-long NumBytesToRead = 0;
+extern long CheckAndReadTrigger(int BoardNumber, int FifoNum, int SendNextEmpty, int globQueueUsageFlag){
+	int tempval;	//temporary holder for data read from VME
+	int FullFlag, EmptyFlag;
+	int *ptr;
+	long NumBytesTransferred;
+	long NumBytesLive=0; //20250602 Ryan
+	int TransferFifoStatus;		//for status return of TriggerTypeFHEader()
+	long NumBytesToRead = 0;
 
 	if(inloop_debug_level >= 2) printf("inLoopSupport: CheckAndReadTrigger\n");
 
@@ -741,93 +722,79 @@ long NumBytesToRead = 0;
 	//Check for Trigger full error, but only if it is MON_FIFO7.
 	//We expect the other FIFOs to usually be full when read, so that's not an error.
 	//=======================================
-	if (FifoNum == 6)
-		{
-		if (TriggerFull[BoardNumber]) 
-			{
-			if(inloop_debug_level >= 2) printf("ERROR : FIFO OVERFLOW in board #%d\n",BoardNumber);
-			TransferFifoStatus = TriggerTypeFHeader(2, FifoNum, BoardNumber, globQueueUsageFlag);     //send error header
-			//reset the FIFO
-			ClearTrigFIFO(BoardNumber, FifoNum);
-			if(inloop_debug_level >= 2) printf("FIFO RESET after overflow in board #%d\n",BoardNumber);
-			stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
-			return(-1);
-			} //end if (TriggerFull[BoardNumber])
-		} //end if (FifoNum == 6)
+	if (FifoNum == 6){
+	if (TriggerFull[BoardNumber]) {
+		if(inloop_debug_level >= 2) printf("ERROR : FIFO OVERFLOW in board #%d\n",BoardNumber);
+		TransferFifoStatus = TriggerTypeFHeader(2, FifoNum, BoardNumber, globQueueUsageFlag);     //send error header
+		//reset the FIFO
+		ClearTrigFIFO(BoardNumber, FifoNum);
+		if(inloop_debug_level >= 2) printf("FIFO RESET after overflow in board #%d\n",BoardNumber);
+		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+		return(-1);
+		} //end if (TriggerFull[BoardNumber])
+	} //end if (FifoNum == 6)
 
 	//=======================================
 	//Check for empty.
 	//=======================================
-	if (TriggerEmpty[BoardNumber])
-		{
-			if(inloop_debug_level >= 2) printf("FIFO EMPTY in board #%d\n",BoardNumber);
-			//	To reduce load on Ethernet, SendNextEmpty is a flag that causes
-			//	reporting of true empty to once every 'n' cycles of inLoop.
-			if (SendNextEmpty)
-				{
-				TransferFifoStatus = TriggerTypeFHeader(0, FifoNum, BoardNumber, globQueueUsageFlag);		//send informational message that trigger was empty
-				}
-			stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
-			return(0);
-		}  //end If (TriggerEmpty[BoardNumber])
+	if (TriggerEmpty[BoardNumber]){
+		if(inloop_debug_level >= 2) printf("FIFO EMPTY in board #%d\n",BoardNumber);
+		//	To reduce load on Ethernet, SendNextEmpty is a flag that causes
+		//	reporting of true empty to once every 'n' cycles of inLoop.
+		if (SendNextEmpty){
+			TransferFifoStatus = TriggerTypeFHeader(0, FifoNum, BoardNumber, globQueueUsageFlag);		//send informational message that trigger was empty
+		}
+		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+		return(0);
+	}  //end If (TriggerEmpty[BoardNumber])
 
 
 	//=======================================
 	//If the FIFO number is 6 (MON_FIFO7), read the actual depth counter.
 	//For any other FIFO number, assume there are 256 words.
 	//=======================================
-	if(FifoNum == 6)
-		{
+	if(FifoNum == 6){
 		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LATCHED_DEPTH);		//this is the at-event-boundaries latched counter
 		NumBytesToRead = *ptr;	//value as returned from trigger is number of VME reads you should do
 		ptr = (int *)(daqBoards[BoardNumber].base32 + MTRG_MON7_LIVE_DEPTH);		//this is the actual number of words
-        NumBytesLive = *ptr;
-		}
-	else
-		{
+		NumBytesLive = *ptr;
+	}else{
 		NumBytesToRead = 256;	//This is the depth of most trigger FIFOs, in VME reads.
-		}
+	}
 
-
-	  NumBytesToRead = NumBytesToRead  * 4;	//convert VME reads to BYTES
-	  NumBytesLive = NumBytesLive  * 4;	//convert VME reads to BYTES
-
+	NumBytesToRead = NumBytesToRead  * 4;	//convert VME reads to BYTES
+	NumBytesLive = NumBytesLive  * 4;	//convert VME reads to BYTES
 
 	//=======================================
 	// if neither error traps, and you get this far, suck data.
 	//=======================================
-	  if(inloop_debug_level >= 2) printf("inLoop: FIFO %d of module #%d: read depth (numBytesToRead) %ld Bytes, live depth %ld Bytes\n",FifoNum, BoardNumber, NumBytesToRead, NumBytesLive);
+	if(inloop_debug_level >= 2) printf("inLoop: FIFO %d of module #%d: read depth (numBytesToRead) %ld Bytes, live depth %ld Bytes\n",FifoNum, BoardNumber, NumBytesToRead, NumBytesLive);
 
-	  if (NumBytesToRead == 0) 
-		{
-		printf("CheckAndReadTrigger: ERROR: Depth = 0, EmptyFlag = %d  FullFlag = %d\n",TriggerEmpty[BoardNumber],TriggerFull[BoardNumber]);
+	if (NumBytesToRead == 0) {
+		if(inloop_debug_level >= 1) printf("CheckAndReadTrigger: ERROR: Depth = 0, EmptyFlag = %d  FullFlag = %d\n",TriggerEmpty[BoardNumber],TriggerFull[BoardNumber]);
 		TransferFifoStatus = TriggerTypeFHeader(0, FifoNum, BoardNumber, globQueueUsageFlag);		//send informational message that trigger was empty
 		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
 		return(0);
-		}
+	}
 
-		do
-			{
-//                           int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsageFlag, long *NumBytesTransferred)
-			TransferFifoStatus = transferTrigFifoData(BoardNumber, NumBytesToRead/4, FifoNum, globQueueUsageFlag, &NumBytesTransferred); // Ryan 20250429, 1 word = 4 Bytes
-			} while (TransferFifoStatus == NoBufferAvail);   //keep trying until a buffer is used
+	do{
+		// int transferTrigFifoData(int bdnum, long numlongwords, int FifoNum, int QueueUsageFlag, long *NumBytesTransferred)
+		TransferFifoStatus = transferTrigFifoData(BoardNumber, NumBytesToRead/4, FifoNum, globQueueUsageFlag, &NumBytesTransferred); // Ryan 20250429, 1 word = 4 Bytes
+	} while (TransferFifoStatus == NoBufferAvail);   //keep trying until a buffer is used
 
-		if (TransferFifoStatus == Success) 
-			{
-			if(inloop_debug_level >= 2) printf("inLoop: readout of FIFO complete\n"); 
-			stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
-			return(NumBytesTransferred);
-			}
-		else 
-			{
-			if(inloop_debug_level >= 0) printf("inLoop: DMAError: you're screwed\n");
-			stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
-			return(-3);
-			}
+	if (TransferFifoStatus == Success) {
+		if(inloop_debug_level >= 2) printf("inLoop: readout of FIFO complete\n"); 
+		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+		return(NumBytesTransferred);
+	}else {
+		if(inloop_debug_level >= 0) printf("inLoop: DMAError: you're screwed\n");
+		stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+		return(-3);
+	}
 
 
-stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
-return(-4);		//should be impossible to get here.
+	stop_profile_counter(PROF_IL_CHECK_AND_READ_TRIG);
+	return(-4);		//should be impossible to get here.
 }
 
 
